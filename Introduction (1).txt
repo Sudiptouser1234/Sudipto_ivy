@@ -1,0 +1,148 @@
+##### BASIC R SYNTAX
+myString <- "Hello, World!"
+print ( myString)
+
+# ARITHMETIC OPERATORS
+print (23+17)
+
+# LOGICAL DATA TYPE
+v <- TRUE
+print(class(v))
+?class
+?print
+
+# NUMERIC DATA TYPE
+v <- 23.5
+print(class(v))
+
+# INTEGER DATA TYPE
+v <- 2L
+print(class(v))
+
+# COMPLEX
+v <- 2+5i
+print(class(v))
+
+# CHARACTER
+v <- "TRUE"
+print(class(v))
+
+# IF STATEMENT
+x <- 30L
+if(is.integer(x)) {
+  print("X is an Integer")
+}
+
+# IF ELSE STATEMENT
+x <- "What is R?"
+if(class(x)=="character") {
+  print("R is found")
+} else {
+  print("R is not found")
+}
+
+# ELSE IF STATEMENT
+x <- c("what","is","truth")
+print (class(x))
+
+if(class(x)=="string") {
+  print("R is found the first time")
+} else if (class(x)=="character") {
+  print("R is found the second time")
+} else {
+  print("No R found")
+}
+
+# REPEAT LOOP AND BREAK STATEMENT
+v <- c("Hello","loop")
+cnt <- 2
+
+repeat {
+  print(v)
+  cnt <- cnt+1
+  
+  if(cnt > 5) {
+    break
+  }
+}
+
+# WHILE LOOP
+v <- c("Hello","while loop")
+cnt <- 2
+
+while (cnt < 7) {
+  print(v)
+  cnt = cnt + 1
+}
+
+# FOR LOOP [for-each]
+v <- LETTERS[1:4]
+for ( i in v) {
+  print(i)
+}
+
+# NEXT STATEMENT
+v <- LETTERS[1:6]
+for ( i in v) {
+  if (i == "D") {
+    next
+  }
+  print(i)
+}
+
+for ( i in v) {
+  if (i != "D") {
+    print (i)
+  }else{
+    next
+  }
+}
+
+#### NUMERIC FUNCTIONS
+
+# exp FUNCTION
+print (exp(0))
+
+# log function
+print (log(10))
+?log
+print (log(10,base=10))
+
+# sum function
+?sum
+print (sum(12,13))
+
+# sqrt function
+?sqrt
+print (sqrt(16))
+
+# USER DEFINED FUNCTION
+
+# Create a function to print squares of numbers in sequence.
+new.function <- function(a) {
+  for(i in 1:a) {
+    b <- i^2
+    print(b)
+  }
+}	
+
+# Call the function new.function supplying 6 as an argument.
+new.function(6)
+
+# RETURN STATEMENT
+another.func <- function(a,b){
+  return( a+b )
+}
+
+out <- another.func(10,20)
+
+# Create a sequence of numbers from 32 to 44.
+
+# Create a sequence of numbers from 32 to 44 using built-in function [HINT: ?seq]
+
+# Create a function that takes two arguments - one number and one string to specify operation
+# if the string is "sqrt", the function should return square root of the number
+# if the string is "square", the function should return square of the number
+# if the string is log, the function should return log base 10 of the number
+# if any other string is given, it should return 0
+
