@@ -1,0 +1,82 @@
+#Titanic disaster,predicting the survivors
+
+#Loading the train data
+train <- read.csv("C:/Users/Sudipto Kumar/Desktop/Titanic_train.csv",header=T,sep=",")
+
+
+#Making some changes as part of Feature Engineering 
+#Setting the Pclass variable as categorical
+
+train$pclass <-factor(train$Pclass,levels = c(3, 2, 1), ordered = T)
+
+
+
+#Loading test data
+test<- read.csv("C:/Users/Sudipto Kumar/Desktop/test_titanic.csv",
+                  header = T, sep = ",")
+
+#setting the pclass for test dataset as categorical
+
+test$pclass <-factor(test$Pclass,levels = c(3, 2, 1), ordered = T)
+
+#Missing value check for Age
+train$Age[is.na(train$Age)]=mean(train$Age,na.rm=T)
+summary(train$Age)
+
+#Summary stats
+
+table(train$Survived)
+#proportion of the passengers survived
+prop.table(table(train$Survived))
+summary(train$Survived)
+summary(train$Sex)
+
+#Checking the proportion of survived male and females
+prop.table(table(train$Sex))
+prop.table(table(train$Age))
+prop.table(table(train$Sex,train$Survived),1)#1=survived
+
+#Spliting the dataset with train and test(70:30)
+set.seed(100)
+split<-sample(1:nrow(train),0.70*nrow(train),replace = F)
+sample_train<-train[split,]
+sample_test<-train[-split,]
+
+#Model building, "Passengerid" is exculded
+logistic_mod<-glm(Survived~pclass+Sex, data=sample_train[,-1],family="binomial")
+
+summary(logistic_mod)#AIC:590.51, less AIC value preferred
+
+#Building the 2nd model including Age
+logistic_mod1<-glm(Survived~pclass+Sex+Age, data=sample_train[,-1],family="binomial")
+
+summary(logistic_mod1)#AIC has been redeuced to 574.1. Also,Age has become significant variable.
+
+#Analyzing the Confidence level
+
+confint(logistic_mod1)
+
+
+#Prediction part
+
+prediction_part <- predict(logistic_mod1, type = "response",newdata=sample_test)
+head(prediction_part)
+
+
+#Setting the probability cut-off rate
+#First, I'm calculating the event rate on a random basis
+
+table(train$Survived)/nrow(train)
+
+#Now, predicting the cut-off rate where 1=survived,0=not-survived
+#cut-off value is 0.383
+pred<-ifelse(prediction_part>=0.383,1,0)
+
+#Building the Confusion matrix
+library(caret)
+confusionMatrix(pred,sample_test$Survived,positive ="1")
+
+#Model seems ok with accuracy rate=79.85
+
+#Publishing the output of the model
+write.table(pred, "C:/Users/Sudipto Kumar/Desktop/Survival_prediction.csv",col.names = F,row.names=F,quote=FALSE)
