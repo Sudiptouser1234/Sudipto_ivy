@@ -1,0 +1,133 @@
+#Loading work file
+amazon<- read.csv("C:/Users/Sudipto Kumar/Desktop/Ivy R/Final projects/amazon_baby.csv")
+
+#EDA part:
+
+summary(amazon)
+summary(amazon$name)
+summary(amazon$review)
+
+#Total reviews=829
+
+summary(amazon$rating)
+
+#Total products=78
+
+#Proudct with max rating
+
+summary(filter(amazon,rating==5))
+#Vulli Sophie the Giraffe Teether
+
+#Product having 14th highest review
+
+summary(filter(amazon,rating==5),15)
+
+#Avg no of reviews per product
+
+tot_avg<-group_by(amazon,review,name)
+
+summarise(tot_avg,mean(name),mean(review),count=n())
+
+#Rating distribution
+
+summary(filter(amazon,rating==1|rating==2|rating==3|rating==4|rating==5))
+
+#5 stars and 4 stars among products
+
+summary(filter(amazon,rating==5|rating==4))
+
+#1 stars and 2 stars
+
+summary(filter(amazon,rating==1|rating==2))
+
+#Missing values
+None
+
+#Text Mining and Sentiment Analysis:
+
+install.packages("RTextTools")
+library(RTextTools)
+library(e1071)
+
+
+#Considering rating>3 as pos,rating<3 as neg, rating=3 not icluded for analysis
+
+pos_tweets<-rbind(
+  c('I love this little calender, you can keep track of all of baby\'s firsts. I like the illustrations, and the stickers too.
+', 'positive'),
+  c('Beautiful little book.  A great little short story saying I Love You....Keeps the attention of the baby and then the baby can actually turn the pages and hold on to it when you are finished interacting with it.
+', 'positive'),
+  c('I like how the book has a hook to attach it to your stroller or car seat - it wont get lost.  Great way to go over family members.
+', 'positive'),
+  c('This is a very good gift for a new mother.  You would want to give it to the parents as soon as baby is born so that they can start from the very beginning to chart the &#34;firsts&#34;.  I had one of these calendars for each of my five children.  They enjoy looking up their &#34;firsts&#34; especially as they are now parents themselves.
+', 'positive'),
+  c('Great toys, we always pack one or two in the diaper bag, our 7 month old loves to play with them and I don\'t worry at all about him chewing on these toys as there are only smooth surfaces
+', 'positive'))
+
+
+
+neg_tweets = rbind(
+  c('This product sucks. My little boy LOVES to chew on things while he\'s teething - and he bites down hard. He was never able to bite hard enough to get this dumb thing to vibrate. Very disappointing.
+', 'negative'),
+  c('This is a horrible product - because the base of the bar is round, it doesn\'t attach properly to a stroller, and it keeps sliding forward or back, thus losing all the snacks in the cup.  They need to redesign it with a flat base.  There is one company that has one with the flat base - it\'s made by Kids11, Inc -and my daughter LOVES IT!  Don\'t waste your money on this one - you, and your little one will just be frustrated!
+', 'negative'),
+  c('Bad construction is my main issue. My husband assembled it and when changing the bag, you\'re supposed to open up the top head part which tilts back.  There\'s a little plastic tab that\'s suppused to slide in as your opening the top, but instead it get\'s cought so it allows the top to open up only partially. It may just be one defective item that somehow passed the quality control inspection, but I\'ve given up on diaper pails in general.  Talking to 1st time parents, I found out that almost everyone gets one, but almost everyone stops using them very quickly.
+', 'negative'),
+  c('Worst diaper pale ever!!  I\'ve had mine for 2 years now and I am throwing it away as soon as my second Decor arrives.  No matter how many times I clean the "Chump" it still stinks.  The diapers and wipes get caught in the drop hole and stuck wet wipes make it stink even worse.  Forget scented trash bags, they won\'t cure the smell of the "Chump".  Also, watch out when changing the bag, you may lose a finger if the lid unexpectedly slams shut on you when changing it.  Forget this pale and go for the Decor.
+', 'negative'),
+  c('This item posses a chocking hazzard. I woke up to my 6 month old gagging on the elastic strap that holds the sheet to the crib. While it may seem like a wonderful invention (oh how i miss it!) I don\'t think it\'s worth the risk.
+', 'negative'))
+
+
+test_tweets = rbind(
+  c('I love this little calender, you can keep track of all of baby\'s firsts. I like the illustrations, and the stickers too.
+', 'positive'),
+  c('Beautiful little book.  A great little short story saying I Love You....Keeps the attention of the baby and then the baby can actually turn the pages and hold on to it when you are finished interacting with it.
+', 'positive'),
+  c('Love it love it love it!!  Got my first baby tracker as a gift, bought another one as soon as it was used up.  Great for daycare, too, so you can communicate with your provider about baby\'s activities for the day.  Also great for round the clock care- no need to "remember" when baby ate last or how much sleep you really got!!  Get it for your new moms- to- be!!
+', 'positive'),
+  c('This is a horrible product - because the base of the bar is round, it doesn\'t attach properly to a stroller, and it keeps sliding forward or back, thus losing all the snacks in the cup.  They need to redesign it with a flat base.  There is one company that has one with the flat base - it\'s made by Kids11, Inc -and my daughter LOVES IT!  Don\'t waste your money on this one - you, and your little one will just be frustrated!
+', 'negative'),
+  c('Bad construction is my main issue. My husband assembled it and when changing the bag, you\'re supposed to open up the top head part which tilts back.  There\'s a little plastic tab that\'s suppused to slide in as your opening the top, but instead it get\'s cought so it allows the top to open up only partially. It may just be one defective item that somehow passed the quality control inspection, but I\'ve given up on diaper pails in general.  Talking to 1st time parents, I found out that almost everyone gets one, but almost everyone stops using them very quickly.
+', 'negative'),
+  c('Worst diaper pale ever!!  I\'ve had mine for 2 years now and I am throwing it away as soon as my second Decor arrives.  No matter how many times I clean the "Chump" it still stinks.  The diapers and wipes get caught in the drop hole and stuck wet wipes make it stink even worse.  Forget scented trash bags, they won\'t cure the smell of the "Chump".  Also, watch out when changing the bag, you may lose a finger if the lid unexpectedly slams shut on you when changing it.  Forget this pale and go for the Decor.
+','negative'))
+
+
+tweets = rbind(pos_tweets, neg_tweets, test_tweets)
+
+sentiment = c(rep("pos_tweets", length(pos_tweets) ), 
+              rep("neg_tweets", length(neg_tweets)))
+
+
+sentiment_test = c(rep("pos_tweets", length(test_tweets) ), 
+                   rep("neg_tweets", length(test_tweets)))
+
+
+sentiment_all = as.factor(c(sentiment, sentiment_test))
+
+#Now,I'm building the document-term matrix for model building
+
+mat= create_matrix(tweets, language="english", 
+                       removeStopwords=FALSE, removeNumbers=TRUE, 
+                       stemWords=FALSE, tm::weightTfIdf)
+#Training the model
+
+mat = as.matrix(mat)
+
+
+# For model building, I'm using a simple classification method-"Naive Bayes"
+
+classifier = naiveBayes(mat[1:10,], as.factor(sentiment_all[1:10]))
+
+#Model validation part:
+
+predicted = predict(classifier, mat[11:15,])
+
+predicted
+
+table(sentiment_test, predicted)
+recall_accuracy(sentiment_test, predicted) #Recall accuracy for the model is 0.5
+
+
+
