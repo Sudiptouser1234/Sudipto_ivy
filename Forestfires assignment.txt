@@ -1,0 +1,125 @@
+#Cluster analysis for Forestfires data set
+#Loading the data set
+forestfires <- read.csv("C:/Users/Sudipto Kumar/Desktop/Ivy R/forestfires.csv")
+#Summary stats
+str(forestfires)
+dim(forestfires)
+names(forestfires)
+summary(forestfires) #NO missing values
+colSums(is.na(forestfires))
+
+#Subsetting the data set only with numeric values
+
+sample<-forestfires[,5:13]
+head(sample)
+str(sample)
+
+#Scaling the data set
+#Formulas for scaling the data
+#(column  - mean(column))/sd(column)
+#Repeat for all columns
+
+list<-names(sample)
+scaled_data<-data.frame(rownum<-1:517)
+for(i in 1:length(list))
+{
+  
+  x<-(sample[,i]-mean(sample[,i]))/(sd(sample[,i]))
+  scaled_data<-cbind(scaled_data,x)
+  names(scaled_data)[i+1]<-paste("scaled_",list[i])
+  print(list[i])
+  
+}
+head(scaled_data)
+#Deleting the first column, not usful for analysis
+scaled_data<-scaled_data[,-1]
+
+#Merging the scaled and original data set
+sample1<-cbind(sample,scaled_data)
+names(sample1)
+str(sample1)
+
+
+#Bulding K-means clustering model
+#kmeans(scaled_data,k);k=no of cluster
+#I've randomly selected the 3rd cluster
+
+set.seed(200)
+names(sample1)
+forest_cluster<-kmeans(sample1[,7:13],3)
+
+#Analysis of K-means clustering model
+
+#"size"=No of observations in each cluster
+#withinss=within sum of squares metric for each clust
+#totss=The total sum of squares
+#total within=cluster sum of squares
+#betweenss=between-cluster sum of squares,i.e.totss-tot.withinss
+
+#Finding the optimal no of clusters
+#Creating screeplot-plot of cluster's tot.withinss wrt number of clusters
+
+
+wss<-1:15
+number<-1:15
+
+for (i in 1:15)
+  
+{
+  wss[i]<-kmeans(sample1[,7:13],i)$tot.withinss
+  
+}
+
+#Now,I'm using ggplot2 to choose the optimal no of cluster
+data<-data.frame(wss,number)
+p<-ggplot(data,aes(x=number,y=wss),color="red")
+p+geom_point()+scale_x_continuous(breaks=seq(1,20,1))
+
+#Analysis of screeplot
+#As the no of cluster increases,the total withss dercreases
+#For a good cluster the value of total withinss shuold be minimum
+#So, from a certain ponit in the graph,the total withinss becomes constant
+#We can analyze that from point 4, the total withinss becomes constant
+
+#Hence, I've chosen the cluster point 4 as my optimal no of cluster
+
+#Now, I'm re-building the model with optimal cluster,k=4
+
+set.seed(200)
+cluster4<-kmeans(sample1[,7:13],4)
+
+
+sample_cluster<-cluster4$cluster
+
+#Now,I'm profiling the cluster
+
+#Cluster wise Aggregates
+cmeans<-aggregate(sample1[,1:6],by=list(sample_cluster),FUN=mean)
+cmeans
+dim(cmeans)
+
+#cmeans contains the summary of all the clusters
+
+
+#Z-score calculation part
+#Formula for z-score,z-score =population_mean - group_mean /population_sd
+
+list1=names(cmeans)
+
+for(i in 1:length(list1))
+{
+  y<-(cmeans[,i+1] - apply(sample1[,1:6],2,mean)[i])/(apply(sample1[,1:6],2,sd)[i])
+  cmeans<-cbind(cmeans,y)
+  names(cmeans)[i+7]<-paste("z",list1[i+1],sep="_")
+  print(list1[i+1])
+}
+
+cmeans<-cmeans[,-14]
+names(cmeans)
+
+#Higher Z-score,more heterogeneous is the cluster group from the population
+
+
+
+
+
