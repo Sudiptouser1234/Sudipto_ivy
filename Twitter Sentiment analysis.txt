@@ -1,0 +1,171 @@
+# install.packages("devtools")
+# install.packages("rjson")
+# install.packages("bit64")
+# install.packages("httr")
+# install.packages("plyr")
+# install.packages("twitteR")
+#install.packages("RColorBrewer")
+
+# sessionInfo()
+api_key <- "DCNU8G7VO9ILVudAomvpOBsIv"
+api_secret <- "pHHsrlZvCfUQtpYM1dHBEUAul8JkrDqcWYNSFZXExb5D9gjF9n"
+access_token <- "797344934311301120-677sncL7VDeSS2tRCW28WRMIjtIhWdT"
+token_secret <- " kAnELcutmcMOivaSyv6vnR4Rf3hjV51o1dbEVQdDD43x1"
+
+#INSTALL RTOOLS
+# devtools::install_github("jrowen/twitteR", ref = "oauth_httr_1_0",version="0.6.1")
+library(devtools)
+library(plyr)
+library(twitteR)
+
+
+# Twitter authentication
+setup_twitter_oauth(api_key,api_secret,access_token,access_token_secret)
+
+#Tweets on Donald Trump
+tweets=searchTwitter('#Donald Trump',n=1000)
+head(tweets)
+
+#Creating a data frame for tweets
+df <- do.call("rbind", lapply(tweets, as.data.frame))
+# install.packages("C:/Users/Admin/Downloads/twitteR_1.1.8.tar.gz",repos=NULL, type="source",dependencies = TRUE)
+# install.packages("C:/Users/Admin/Downloads/plyr_1.8.2.tar.gz",repos=NULL, type="source",dependencies = TRUE)
+# install.packages("C:/Users/Admin/Downloads/httr_0.6.1.tar.gz",repos=NULL, type="source",dependencies = TRUE)
+# install.packages("tm")
+library(tm)
+text <- df$text
+#Defining Corpus
+review_source <- VectorSource(text)
+corpus <- Corpus(review_source)
+
+#Cleaning the Tweets - lower cases, remove numbers, punctuations, stopwords
+
+corpus <- tm_map(corpus,removePunctuation)
+corpus <- tm_map(corpus,content_transformer(tolower))
+corpus <- tm_map(corpus,stripWhitespace)
+corpus <- tm_map(corpus,removeWords,stopwords("english"))
+
+#Changing the corpus as Term Document Matrix
+
+dtm <- DocumentTermMatrix(corpus)
+dtm2 <- as.matrix(dtm)
+
+frequency <- colSums(dtm2)
+frequency <- sort(frequency,decreasing=TRUE)
+head(frequency,n=200)
+
+#Creating a word cloud with max 100 words,coloring with RColorbrewer
+#install.packages("wordcloud")
+library("wordcloud")
+
+trunc_freq <- frequency[2:100]
+frequency[1]
+words <- names(frequency)
+
+col <- brewer.pal(5,"Dark2")
+
+wordcloud(corpus, min.freq=3, rot.per=0.15, scale=c(8,1),
+          random.color=T, max.word=100, random.order=F, colors=col)
+
+#Sentiment Analysis
+#I'm using Hu & Liu's opinion lexicon
+#Hu & Liu's opinion lexicon categorizes approx 6,800 words as postive and negative
+#Importing postive and negative word list
+
+pos_words <- read.csv("C:/Users/Sudipto Kumar/Desktop/Ivy R/Final projects/Positive-Words.txt", sep="")
+
+neg_words <- read.csv("C:/Users/Sudipto Kumar/Desktop/Ivy R/Final projects/Negative-Words.txt", sep="")
+
+#Sentiment Analysis Function-J. Breen Approach
+
+#Installing "Stringr" for string,gsub and regular expression analysis
+#install.packages("stringr")
+
+#Defining the score sentiment function
+
+score.sentiment = function(sentences, pos_words, neg_words, .progress='none')
+  
+{
+  scores = laply(sentences,
+                 function(sentence, pos_words, neg_words)
+                 {
+                   # removing punctuation - using global substitute
+                   sentence = gsub("[[:punct:]]", "", sentence)
+                   # remove control characters
+                   sentence = gsub("[[:cntrl:]]", "", sentence)
+                   # removing digits
+                   sentence = gsub('\\d+', '', sentence)
+                   # defining error handling function when trying tolower
+                   tryTolower = function(x)
+      
+                   {
+                     # creating missing value
+                     y = NA
+                     # tryCatch error
+                     try_error = tryCatch(tolower(x), error=function(e) e)
+                     # if not an error
+                     if (!inherits(try_error, "error"))
+                       y = tolower(x)
+                     # result
+                     return(y)
+                   }
+                   # using tryTolower with sapply
+                   sentence = sapply(sentence, tryTolower)
+                   # spliting sentence into words with str_split (stringr package)
+                   word.list = str_split(sentence, "\\s+")
+                   words =unlist(word.list) 
+                   
+                   pos.matches = match(words, pos_words)
+                   neg.matches = match(words, neg_words)
+                   # getting the position of the matched term or NA
+                   # Returning a value a TRUE/FALSE
+                   pos.matches = !is.na(pos.matches)
+                   neg.matches = !is.na(neg.matches)
+                     
+  
+                   # final score
+                   score = sum(pos.matches) - sum(neg.matches)
+                   return(score)
+                 }, pos_words, neg_words, .progress=.progress )
+  
+  # Creating data frame with scores for each sentence
+  scores.df = data.frame(text=sentences, score=scores)
+  return(scores.df)
+}
+
+#Using opinion lexicon and fucntion for scoring sentiment
+
+tweets_txt = sapply(tweets, function(x) x$getText())
+
+scores = score.sentiment(tweets_txt, pos_words, neg_words, .progress='text')
+
+scores$senti_pos = as.numeric(scores$score >= 2)
+scores$Senti_neg = as.numeric(scores$score <= -2)
+
+#Analysis of pos and neg sentiments
+num_pos = sum(scores$senti_pos)
+num_neg = sum(scores$senti_neg)
+
+#Visualizing the sentiment score analysis
+
+#install.packages("lattice")
+par(bty="l")
+boxplot(score~tweets_txt, data=scores, col=c("red", "grey"))
+
+histogram(data=scores, ~score|tweets_txt, main="Sentiment Analysis of Donald Trump", col=c("red", "grey"),
+          xlab="", sub="Sentiment Score")
+
+
+
+
+
+
+
+
+
+
+                    
+
+
+
+
