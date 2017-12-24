@@ -1,0 +1,891 @@
+#Problem Statement
+#A large company named XYZ, employs, at any given point of time, around 4000 employees. However, every year, around 15% of its employees leave the company and 
+#need to be replaced with the talent pool available in the job market. The management believes that this level of attrition (employees leaving, either on 
+#their own or because they got fired) is bad for the company, because of the following reasons -
+
+#The former employees’ projects get delayed, which makes it difficult to meet timelines, resulting in a reputation loss among consumers and partners
+
+#A sizeable department has to be maintained, for the purposes of recruiting new talent
+
+#More often than not, the new employees have to be trained for the job and/or given time to acclimatise themselves to the company
+
+ 
+
+#Hence, the management has contracted an HR analytics firm to understand what factors they should focus on, in order to curb attrition.
+#In other words, they want to know what changes they should make to their workplace, in order to get most of their employees to stay. Also, they want to know which of these variables is most important and needs to be addressed right away.
+
+ 
+#Since you are one of the star analysts at the firm, this project has been given to you.
+
+#Goal of the case study
+#You are required to model the probability of attrition using a logistic regression. The results thus obtained will be used by the management to 
+#understand what changes they should make to their workplace, in order to get most of their employees to stay.
+
+**************************************************************************************************************************
+
+
+
+
+
+# Employee Attrition.
+
+# ----    Data dictionary
+# Age	          : Age of the employee	
+# Attrition	    : Whether the employee left in the previous year or not	
+# BusinessTravel:	How frequently the employees travelled for business purposes in the last year	
+# Department	  : Department in company	
+# DistanceFromHome	: Distance from home in kms	
+# Education	    : Education Level	1 'Below College'
+#                                 2 'College'
+#                                 3 'Bachelor'
+#                                 4 'Master'
+#                                 5 'Doctor'
+# EducationField:	Field of education	
+# EmployeeCount :	Employee count	
+# EmployeeNumber:	Employee number/id	
+# EnvironmentSatisfaction :	Work Environment Satisfaction Level	1 'Low'
+#                                                               2 'Medium'
+#                                                               3 'High'
+#                                                               4 'Very High'
+# Gender        :	Gender of employee	
+# JobInvolvement:	Job Involvement Level	1 'Low'
+#                                       2 'Medium'
+#                                       3 'High'
+#                                       4 'Very High'
+# JobLevel      :	Job level at company on a scale of 1 to 5	
+# JobRole	      : Name of job role in company	
+# JobSatisfaction:	Job Satisfaction Level	1 'Low'
+#                                           2 'Medium'
+#                                           3 'High'
+#                                           4 'Very High'
+# MaritalStatus :	Marital status of the employee	
+# MonthlyIncome :	Monthly income in rupees per month	
+# NumCompaniesWorked:	Total number of companies the employee has worked for	
+# Over18	      : Whether the employee is above 18 years of age or not	
+# PercentSalaryHike	: Percent salary hike for last year	
+# PerformanceRating :	Performance rating for last year	1 'Low'
+#                                                       2 'Good'
+#                                                       3 'Excellent'
+#                                                       4 'Outstanding'
+# RelationshipSatisfaction: 	Relationship satisfaction level	1 'Low'
+#                                                             2 'Medium'
+#                                                             3 'High'
+#                                                             4 'Very High'
+# StandardHours :	Standard hours of work for the employee	
+# StockOptionLevel	: Stock option level of the employee	
+# TotalWorkingYears :	Total number of years the employee has worked so far	
+# TrainingTimesLastYear :	Number of times training was conducted for this employee last year	
+# WorkLifeBalance   :	Work life balance level	1 'Bad'
+#                                             2 'Good'
+#                                             3 'Better'
+#                                             4 'Best'
+# YearsAtCompany	: Total number of years spent at the company by the employee	
+# YearsSinceLastPromotion	: Number of years since last promotion	
+# YearsWithCurrManager : Number of years under current manager	
+
+
+
+setwd("C:\\MyData\\Upgrad&IIITB\\PredictiveAnalytics\\HRCaseStudy\\PA-I_Case_Study_HR_Analytics")
+library(stringr)
+library(dplyr)
+library(caTools)
+library(MASS)
+library(car)
+library(caret)
+library(GGally)
+library(cowplot)
+library(StatMeasures)
+
+########################### Read employee data #################################
+empData = read.csv("employee_survey_data.csv")
+str(empData)
+##check for duplicates
+which(duplicated(empData))
+
+###################### Read general data and merge with employee data #########################
+genData = read.csv("general_data.csv")
+str(genData)
+##check for duplicates
+which(duplicated(genData))
+setdiff(empData$EmployeeID,genData$EmployeeID) # Identical EmployeeID across these datasets
+##no duplicates so it can be merged
+empData = merge.data.frame(empData,genData,by="EmployeeID")
+
+
+###################### Read manager_survey_data and merge with employee data #########################
+mgrData = read.csv("manager_survey_data.csv")
+str(mgrData)
+##check for duplicates
+which(duplicated(mgrData))
+setdiff(empData$EmployeeID,mgrData$EmployeeID) # Identical EmployeeID across these datasets
+##no duplicates so it can be merged
+empData = merge.data.frame(empData,mgrData,by="EmployeeID")
+
+##########################################  Derive Metrics #################################################
+###################### Read inTime and outTime , calculate average working hours and merge with employee data #########################
+##Read data and check for duplicates
+inTime = read.csv("in_time.csv",stringsAsFactors = F)
+outTime = read.csv("out_time.csv",stringsAsFactors = F)
+str(inTime)
+str(outTime)
+##check for duplicates
+which(duplicated(inTime))
+which(duplicated(outTime))
+
+# convert the columns to date type from char
+inTime_f <- data.frame(inTime[,1])
+inTime<- data.frame(sapply(inTime[, -c(1)], function(x) strptime(x, format = "%Y-%m-%d %H:%M:%S")))
+inTime <- cbind(inTime_f, inTime)
+colnames(inTime)[1] <- "EmployeeID"
+outTime_f <- data.frame(outTime[,1])
+outTime <- data.frame(sapply(outTime[,-c(1)], function(x) strptime(x, format = "%Y-%m-%d %H:%M:%S")))
+outTime <- cbind(outTime_f, outTime)
+colnames(outTime)[1] <- "EmployeeID"
+
+# Subtract the same column names by Employee ID
+setdiff(inTime$EmployeeID, outTime$EmployeeID)
+inTime <- inTime[order(inTime$EmployeeID),]
+outTime <- outTime[order(outTime$EmployeeID),]
+timeDiff <- (outTime-inTime[colnames(outTime)])
+timeDiff <- data.frame(sapply(timeDiff, function(x) as.double(x)))
+avgWorkingHours <- rowMeans(timeDiff[, 2:262],na.rm = TRUE)
+avgWorkingHours <- data.frame(cbind(inTime$EmployeeID, avgWorkingHours[-1]))
+colnames(avgWorkingHours)[1] <- "EmployeeID"
+colnames(avgWorkingHours)[2] <- "avgWorkingHours"
+
+#####Check for duplicates
+which(duplicated(avgWorkingHours))
+setdiff(empData$EmployeeID,avgWorkingHours$EmployeeID) # Identical EmployeeID across these datasets
+##no duplicates so it can be merged
+empData = merge.data.frame(empData,avgWorkingHours,by="EmployeeID")
+
+
+##Employee id nt required
+empData = empData[,-1]
+###################### End of average working hours calculation #########################
+
+###################### Remove columns with single unique value and check NA's #########################
+
+empData = Filter(function(x)(length(unique(x))>1), empData)
+##Check how many na values are present
+sapply(empData,function(x) sum(is.na(x)))
+length(which(is.na(empData)))##Na rows are 100+ around 2.5% of 4410. hence cannot remove.
+empData <- na.omit(empData)
+
+empDataMerged = empData
+
+################################### Outlier treatment ###########################################
+contVars=c("Age","DistanceFromHome","MonthlyIncome","PercentSalaryHike","TotalWorkingYears",
+           "TrainingTimesLastYear","YearsAtCompany","YearsSinceLastPromotion","YearsWithCurrManager",
+           "avgWorkingHours","NumCompaniesWorked")
+str(empData)
+empData$TotalWorkingYears = as.numeric(empData$TotalWorkingYears)
+empData$NumCompaniesWorked = as.numeric(empData$NumCompaniesWorked)
+getOutlier = function(x) {
+  box <- boxplot.stats(x)
+  if(length(box$out) == 0) {
+    return(0)
+  } else {
+   return(min(box$out))
+  }
+}
+
+# Boxplots for numeric variables 
+
+par(mfrow = c(2,2))
+boxplot(empData$Age,xlab="Age",pars=list(outcol="red"),col="blue")
+boxplot(empData$DistanceFromHome,xlab=c("DistanceFromHome"),pars=list(outcol="red"),col="blue")
+boxplot(empData$MonthlyIncome,xlab=c("MonthlyIncome"),pars=list(outcol="red"),col="blue")
+boxplot(empData$YearsWithCurrManager,xlab=c("YearsWithCurrManager"),pars=list(outcol="red"),col="blue")
+boxplot(empData$NumCompaniesWorked,xlab=c("NumCompaniesWorked"),pars=list(outcol="red"),col="blue")  
+
+boxplot(empData$TotalWorkingYears,xlab=c("TotalWorkingYears"),pars=list(outcol="red"),col="blue") 
+boxplot(empData$TrainingTimesLastYear,xlab=c("TrainingTimesLastYear"),pars=list(outcol="red"),col="blue") 
+boxplot(empData$YearsAtCompany,xlab=c("YearsAtCompany"),pars=list(outcol="red"),col="blue") 
+boxplot(empData$YearsSinceLastPromotion,xlab=c("YearsSinceLastPromotion"),pars=list(outcol="red"),col="blue")
+
+boxplot(empData$PercentSalaryHike,xlab=c("PercentSalaryHike"),pars=list(outcol="red"),col="blue")
+
+##Calculate minimum value of outlier for each continuous variable
+minValOutlier = sapply(empData[,contVars],getOutlier)
+minValOutlier
+
+##Cap outliers for ones which have non zero outlier
+empData$MonthlyIncome[empData$MonthlyIncome>minValOutlier[3]]  <- minValOutlier[3] 
+empData$TotalWorkingYears[empData$TotalWorkingYears>minValOutlier[5]]  <- minValOutlier[5] 
+empData$YearsAtCompany[empData$YearsAtCompany>minValOutlier[7]]  <- minValOutlier[7]
+empData$YearsSinceLastPromotion[empData$YearsSinceLastPromotion>minValOutlier[8]]  <- minValOutlier[8]
+empData$YearsWithCurrManager[empData$YearsWithCurrManager>minValOutlier[9]]  <- minValOutlier[9]
+empData$NumCompaniesWorked[empData$NumCompaniesWorked>minValOutlier[11]]  <- minValOutlier[11]
+
+
+
+# Boxplots for numeric variables again to verify all outliers are treated
+
+par(mfrow = c(2,2 ))
+boxplot(empData$Age,xlab="Age",pars=list(outcol="red"),col="blue")
+boxplot(empData$DistanceFromHome,xlab=c("DistanceFromHome"),pars=list(outcol="red"),col="blue")
+boxplot(empData$MonthlyIncome,xlab=c("MonthlyIncome"),pars=list(outcol="red"),col="blue")
+boxplot(empData$YearsWithCurrManager,xlab=c("YearsWithCurrManager"),pars=list(outcol="red"),col="blue")
+boxplot(empData$NumCompaniesWorked,xlab=c("NumCompaniesWorked"),pars=list(outcol="red"),col="blue")  
+
+boxplot(empData$TotalWorkingYears,xlab=c("TotalWorkingYears"),pars=list(outcol="red"),col="blue") 
+boxplot(empData$TrainingTimesLastYear,xlab=c("TrainingTimesLastYear"),pars=list(outcol="red"),col="blue") 
+boxplot(empData$YearsAtCompany,xlab=c("YearsAtCompany"),pars=list(outcol="red"),col="blue") 
+boxplot(empData$YearsSinceLastPromotion,xlab=c("YearsSinceLastPromotion"),pars=list(outcol="red"),col="blue")
+
+#####Scale all continuous variables
+scaledContVars=as.data.frame(sapply(empData[,contVars],scale))
+catVar =setdiff(colnames(empData),contVars)
+empData=cbind(empData[,catVar],scaledContVars)
+
+############################# Convert categorical to numeric variables #########################
+# creating a dataframe of categorical features
+
+catVar = setdiff(catVar,c("Attrition"))
+empData_chr<- empData[,catVar]
+
+# converting categorical attributes to factor
+empData_fact<- data.frame(sapply(empData_chr, function(x) factor(x)))
+# creating dummy variables for factor attributes
+dummies<- data.frame(sapply(empData_fact, 
+                            function(x) data.frame(model.matrix(~x-1,data =empData_fact))[,-1]))
+
+empData$Attrition<- as.numeric(ifelse(empData$Attrition=="Yes",1,0))
+
+# Final dataset
+empData_final<- cbind(empData[,c(contVars,"Attrition")],dummies) 
+View(empData_final) 
+
+###################################### Basic EDA  ##########################################
+##Cacluclate % of attrition
+attritionRate = sum(empData$Attrition)/nrow(empData)
+attritionRate##rate is 16.16%
+
+empData_final %>%
+  group_by(Attrition) %>%
+  tally() %>%
+  ggplot(aes(x = Attrition, y = n,fill=Attrition)) +
+  geom_bar(stat = "identity") +
+  theme_minimal()+
+  labs(x="Attrition", y="Count of Attriation")+
+  ggtitle("Attrition")+
+  geom_text(aes(label = n), vjust = -0.5, position = position_dodge(0.9))
+#yes=695,no=3605
+
+bar_theme1<- theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))
+plot_grid(ggplot(empData, aes(x=factor(EnvironmentSatisfaction),fill=factor(Attrition)))+ geom_bar()+bar_theme1, 
+          ggplot(empData, aes(x=factor(JobSatisfaction),fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=factor(WorkLifeBalance),fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=BusinessTravel,fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=Department,fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=factor(Education),fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          align = "h")
+##Environmentsatisfaction= 1,jobsatisfaction = 3,worklifebalance=3,
+##businnesstravel=travel_rarely have more attrition
+
+plot_grid(ggplot(empData, aes(x=factor(EducationField),fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=Gender,fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=factor(JobLevel),fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=JobRole,fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          align = "h")
+##Education= 3,EducationField = Life Sciences,Gender=Male,
+##JobLevel=2,JobRole=Research Scientist and Sales Executive have more attrition
+
+plot_grid(ggplot(empData, aes(x=factor(StockOptionLevel),fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=factor(JobInvolvement),fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=factor(PerformanceRating),fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          ggplot(empData, aes(x=MaritalStatus,fill=factor(Attrition)))+ geom_bar()+bar_theme1,
+          align = "h")
+##StockOptionLevel= 0,JobInvolvement =3, PerformanceRating=3,
+##Department=R&D,MaritalStatus=Single have more attrition
+
+###################################### Correlation analysis #############################################
+#Correlation analysis:
+
+ggpairs(empData[, c("EnvironmentSatisfaction", "Education")])
+
+#-ve correlation=-.0444
+
+ggpairs(empData[, c("JobSatisfaction", "Education")])
+
+#-ve corr=-0.0059
+
+ggpairs(empData_final[, c("TotalWorkingYears", "YearsWithCurrManager")])
+
+#Thease are highly correlated=0.47
+ggpairs(empData_final[, c("JobInvolvement.x3", "JobInvolvement.x2")])
+
+#Even,these variables are correlated=-0.704
+
+
+ggpairs(empData_final[, c("YearsAtCompany", "PerformanceRating")])
+
+#-ve corr=-0.00975
+
+#Checking correlation of all continuous variables
+ggpairs(empData_final[, c(contVars)],
+        diag = list(continuous = wrap("densityDiag", colour = "red")))
+
+ggpairs(empData_final[, c("Age", "TotalWorkingYears")],
+        diag = list(continuous = wrap("densityDiag", colour = "red")))
+
+ggpairs(empData_final[, c("EducationField.xMedical", "EducationField.xLife.Sciences","EducationField.xMarketing","EducationField.xTechnical.Degree")],
+        diag = list(continuous = wrap("densityDiag", colour = "red")))
+
+##LifeSciences and MEdical are highly correlated=-0.569
+
+ggpairs(empData_final[, c("WorkLifeBalance.x2", "WorkLifeBalance.x3")],
+        diag = list(continuous = wrap("densityDiag", colour = "red")))
+
+##WorkLifeBalance 2 and 3 are highly negatively correlated
+
+ggpairs(empData_final[, c("BusinessTravel.xTravel_Rarely", "BusinessTravel.xTravel_Frequently")],
+        diag = list(continuous = wrap("densityDiag", colour = "red")))
+
+##WorkLifeBalance 2 and 3 are highly negatively correlated
+
+#So,its clear that there are multicolinearity among few variables.
+#We will further analyze them with vif
+
+
+
+###################################### Start of logistic regression ##################################
+########################################################################
+# splitting the data between train and test
+set.seed(100)
+
+trainIndices = sample.split(empData_final$Attrition, SplitRatio = 0.7)
+
+train = empData_final[trainIndices,]
+
+test = empData_final[!(trainIndices),]
+
+
+model_1 = glm(Attrition ~ ., data = train, family = "binomial")
+summary(model_1) 
+
+model_2<- stepAIC(model_1, direction="both")
+model_2#AIC: 2246
+
+model_2 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                JobSatisfaction.x4 + WorkLifeBalance.x2 + WorkLifeBalance.x3 + 
+                WorkLifeBalance.x4 + BusinessTravel.xTravel_Frequently + 
+                BusinessTravel.xTravel_Rarely + Education.x5 + EducationField.xLife.Sciences + 
+                EducationField.xMarketing + EducationField.xMedical + EducationField.xOther + 
+                EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+                JobRole.xManager + JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                MaritalStatus.xSingle + StockOptionLevel.x1 + StockOptionLevel.x3 + 
+                JobInvolvement.x3 + PerformanceRating, family = "binomial", 
+              data = train)
+sort(vif(model_2))
+summary(model_2)
+
+
+##Removing EducationField.xLife.Sciences which has low significance and high vif
+
+model_3 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                JobSatisfaction.x4 + WorkLifeBalance.x2 + WorkLifeBalance.x3 + 
+                WorkLifeBalance.x4 + BusinessTravel.xTravel_Frequently + 
+                BusinessTravel.xTravel_Rarely + Education.x5 +  
+                EducationField.xMarketing + EducationField.xMedical + EducationField.xOther + 
+                EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+                JobRole.xManager + JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                MaritalStatus.xSingle + StockOptionLevel.x1 + StockOptionLevel.x3 + 
+                JobInvolvement.x3 + PerformanceRating, family = "binomial", 
+              data = train)
+sort(vif(model_3))
+summary(model_3)
+
+
+##all the highly correlated variables are significant.Hence removing insignificant ones.
+##BusinessTravel.xTravel_Rarel has high vif and high significance. Hence not removing
+#Removing JobRole.xManager which has low significance
+model_4 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+               YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+               EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+               EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+               JobSatisfaction.x4 + WorkLifeBalance.x2 + WorkLifeBalance.x3 + 
+               WorkLifeBalance.x4 + BusinessTravel.xTravel_Frequently + 
+               BusinessTravel.xTravel_Rarely + Education.x5 +  
+               EducationField.xMarketing + EducationField.xMedical + EducationField.xOther + 
+               EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+               JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+               JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+               MaritalStatus.xSingle + StockOptionLevel.x1 + StockOptionLevel.x3 + 
+               JobInvolvement.x3 + PerformanceRating, family = "binomial", 
+             data = train)
+sort(vif(model_4))
+summary(model_4)
+
+
+##WorkLifeBalance.x3  still remains at same collinearity
+#hence removing it
+model_5 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                JobSatisfaction.x4 + WorkLifeBalance.x2 + 
+                WorkLifeBalance.x4 + BusinessTravel.xTravel_Frequently + 
+                BusinessTravel.xTravel_Rarely + Education.x5 +  
+                EducationField.xMarketing + EducationField.xMedical + EducationField.xOther + 
+                EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+                JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                MaritalStatus.xSingle + StockOptionLevel.x1 + StockOptionLevel.x3 + 
+                JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_5))
+summary(model_5)
+
+#BusinessTravel.xTravel_Rarely and BusinessTravel.xTravel_Frequently are correlated
+#BusinessTravel.xTravel_Rarely has low significance. Hence removing it
+model_6 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                JobSatisfaction.x4 + WorkLifeBalance.x2 + 
+                WorkLifeBalance.x4 + BusinessTravel.xTravel_Frequently + Education.x5 +  
+                EducationField.xMarketing + EducationField.xMedical + EducationField.xOther + 
+                EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+                JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                MaritalStatus.xSingle + StockOptionLevel.x1 + StockOptionLevel.x3 + 
+                JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_6))
+summary(model_6)
+
+
+#TotalWorkingYears has high vif and high significance. Hence keeping it for now.
+##Removing WorkLifeBalance.x4 with low significance
+model_7 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                JobSatisfaction.x4 + WorkLifeBalance.x2 + 
+                BusinessTravel.xTravel_Frequently + Education.x5 +  
+                EducationField.xMarketing + EducationField.xMedical + EducationField.xOther + 
+                EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+                JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                MaritalStatus.xSingle + StockOptionLevel.x1 + StockOptionLevel.x3 + 
+                JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_7))
+summary(model_7)
+
+
+##For now will remove insignificant one which is EducationField.xMarketing
+model_8 =  glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 + WorkLifeBalance.x2 + 
+                 BusinessTravel.xTravel_Frequently + Education.x5 +  
+                 EducationField.xMedical + EducationField.xOther + 
+                 EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+                 JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle + StockOptionLevel.x1 + StockOptionLevel.x3 + 
+                 JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_8))
+summary(model_8)
+
+
+#EducationField.xMedical has lowest significance
+model_9 =  glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 + WorkLifeBalance.x2 + 
+                 BusinessTravel.xTravel_Frequently + Education.x5 +  
+                 EducationField.xOther + 
+                 EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+                 JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle + StockOptionLevel.x1 + StockOptionLevel.x3 + 
+                 JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_9))
+summary(model_9)
+
+
+##Removing insignificant ones. StockOptionLevel.x3
+model_10 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 + WorkLifeBalance.x2 + 
+                 BusinessTravel.xTravel_Frequently + Education.x5 +  
+                 EducationField.xOther + 
+                 EducationField.xTechnical.Degree + JobLevel.x2 + JobLevel.x5 + 
+                 JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle + StockOptionLevel.x1 +  
+                 JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_10))
+summary(model_10)
+
+
+##Removing insignificant ones.EducationField.xTechnical.Degree
+model_11 =glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                JobSatisfaction.x4 + WorkLifeBalance.x2 + 
+                BusinessTravel.xTravel_Frequently + Education.x5 +  
+                EducationField.xOther + 
+                JobLevel.x2 + JobLevel.x5 + 
+                JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                MaritalStatus.xSingle + StockOptionLevel.x1 +  
+                JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_11))
+summary(model_11)
+
+
+##Removing insignificant ones. WorkLifeBalance.x2
+model_12 =glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                JobSatisfaction.x4 +  
+                BusinessTravel.xTravel_Frequently + Education.x5 +  
+                EducationField.xOther + 
+                JobLevel.x2 + JobLevel.x5 + 
+                JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                MaritalStatus.xSingle + StockOptionLevel.x1 +  
+                JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_12))
+summary(model_12)
+
+
+##Removing insignificant ones.JobLevel.x2
+model_13 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + Education.x5 +  
+                 EducationField.xOther + 
+                 JobLevel.x5 + 
+                 JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle + StockOptionLevel.x1 +  
+                 JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_13))
+summary(model_13)
+
+##Removing insignificant ones. EducationField.xOther
+model_14 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + Education.x5 +  
+                 JobLevel.x5 + 
+                 JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle + StockOptionLevel.x1 +  
+                 JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_14))
+summary(model_14)
+
+##Removing insignificant ones. Education.x5 
+model_15 =  glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                  YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                  EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                  EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                  JobSatisfaction.x4 +  
+                  BusinessTravel.xTravel_Frequently + JobLevel.x5 + 
+                  JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                  JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                  MaritalStatus.xSingle + StockOptionLevel.x1 +  
+                  JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_15))
+summary(model_15)
+
+
+##Removing insignificant ones. JobLevel.x5 
+model_16 =  glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                  YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                  EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                  EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                  JobSatisfaction.x4 +  
+                  BusinessTravel.xTravel_Frequently + 
+                  JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                  JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                  MaritalStatus.xSingle + StockOptionLevel.x1 +  
+                  JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_16))
+summary(model_16)
+
+
+##Removing insignificant ones. StockOptionLevel.x1 
+model_17 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + 
+                 JobRole.xManufacturing.Director + JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle +  
+                 JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_17))
+summary(model_17)
+
+
+##Removing insignificant ones. JobRole.xManufacturing.Director 
+model_18 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + 
+                 JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle +  
+                 JobInvolvement.x3 + PerformanceRating, family = "binomial", data = train)
+sort(vif(model_18))
+summary(model_18)
+
+
+
+##Removing insignificant ones. PerformanceRating 
+model_19 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + 
+                 JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle +  
+                 JobInvolvement.x3 , family = "binomial", data = train)
+sort(vif(model_19))
+summary(model_19)
+
+
+##Removing insignificant ones. JobInvolvement.x3 
+model_20 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + 
+                 JobRole.xResearch.Director + 
+                 JobRole.xResearch.Scientist + JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle , family = "binomial", data = train)
+sort(vif(model_20))
+summary(model_20)
+
+##Removing insignificant ones. JobRole.xResearch.Scientist 
+model_21 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + 
+                 JobRole.xResearch.Director + 
+                 JobRole.xSales.Executive + 
+                 MaritalStatus.xSingle , family = "binomial", data = train)
+sort(vif(model_21))
+summary(model_21)
+
+##Removing insignificant ones. JobRole.xSales.Executive   
+model_22 = glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + 
+                 JobRole.xResearch.Director + 
+                 MaritalStatus.xSingle , family = "binomial", data = train)
+sort(vif(model_22))
+summary(model_22)
+
+
+##Removing insignificant ones. JobRole.xResearch.Director 
+model_23 =  glm(formula = Attrition ~ Age + TotalWorkingYears + TrainingTimesLastYear + 
+                  YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                  EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                  EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                  JobSatisfaction.x4 +  
+                  BusinessTravel.xTravel_Frequently + MaritalStatus.xSingle , family = "binomial", data = train)
+sort(vif(model_23))
+summary(model_23)
+
+
+##Removing TotalWorkingYears with high vif
+model_24 = glm(formula = Attrition ~ Age + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 + JobSatisfaction.x2 + JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + MaritalStatus.xSingle , 
+                 family = "binomial", data = train)
+sort(vif(model_24))
+summary(model_24)
+
+##Removing insignificant ones. JobSatisfaction.x2 
+model_25 = glm(formula = Attrition ~ Age + TrainingTimesLastYear + 
+                 YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                 EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                 EnvironmentSatisfaction.x4 +  JobSatisfaction.x3 + 
+                 JobSatisfaction.x4 +  
+                 BusinessTravel.xTravel_Frequently + MaritalStatus.xSingle , 
+               family = "binomial", data = train)
+sort(vif(model_25))
+summary(model_25)
+
+
+##Removing insignificant ones. JobSatisfaction.x3 
+model_26 = glm(formula = Attrition ~ Age + TrainingTimesLastYear + 
+                  YearsSinceLastPromotion + YearsWithCurrManager + NumCompaniesWorked + 
+                  EnvironmentSatisfaction.x2 + EnvironmentSatisfaction.x3 + 
+                  EnvironmentSatisfaction.x4 +   
+                  JobSatisfaction.x4 +  
+                  BusinessTravel.xTravel_Frequently + MaritalStatus.xSingle , 
+                family = "binomial", data = train)
+sort(vif(model_26))
+summary(model_26)#AIC: 2373.2
+
+
+##11 significant attrs in final model
+model_final = model_26
+
+
+##Predict attrition
+colnames(test)
+test_pred = predict(model_final, type = "response", 
+                    newdata = test[,-12])
+summary(test_pred)
+test$prob <- test_pred
+View(test)
+
+
+
+############################## Let's use the probability cutoff of 50%. ##############################
+
+test_pred_attr <- factor(ifelse(test_pred >= 0.50, "Yes", "No"))
+test_actual_attr <- factor(ifelse(test$Attrition==1,"Yes","No"))
+table(test_actual_attr,test_pred_attr)
+test_conf50 = confusionMatrix(test_pred_attr, test_actual_attr, positive = "Yes")
+test_conf50
+# Accuracy : 0.8558 Sensitivity : 0.13397 Specificity : 0.99537  
+
+##Specificity  and accuracy are very good . But sensitivity is too low
+##Lets calculate optimal cut off
+
+
+############################# Lets check the best cutoff of probability ################################
+perform_fn <- function(cutoff) 
+{
+  predicted_churn <- factor(ifelse(test_pred >= cutoff, "Yes", "No"))
+  conf <- confusionMatrix(predicted_churn, test_actual_attr, positive = "Yes")
+  acc <- conf$overall[1]
+  sens <- conf$byClass[1]
+  spec <- conf$byClass[2]
+  out <- t(as.matrix(c(sens, spec, acc))) 
+  colnames(out) <- c("sensitivity", "specificity", "accuracy")
+  return(out)
+}
+
+s = seq(.01,.80,length=100)
+
+OUT = matrix(0,100,3)
+
+
+for(i in 1:100)
+{
+  OUT[i,] = perform_fn(s[i])
+} 
+OUT
+
+par(mfrow = c(1,1 ))
+plot(s, OUT[,1],xlab="Cutoff",ylab="Value",cex.lab=1.5,cex.axis=1.5,ylim=c(0,1),type="l",lwd=2,axes=FALSE,col=2)
+axis(1,seq(0,1,length=5),seq(0,1,length=5),cex.lab=1.5)
+axis(2,seq(0,1,length=5),seq(0,1,length=5),cex.lab=1.5)
+lines(s,OUT[,2],col="darkgreen",lwd=2)
+lines(s,OUT[,3],col=4,lwd=2)
+box()
+legend(0,.50,col=c(2,"darkgreen",4,"darkred"),lwd=c(2,2,2,2),c("Sensitivity","Specificity","Accuracy"))
+
+optimalcutoff <- s[which(abs(OUT[,1]-OUT[,2])<0.01)]
+optimalcutoff
+##############################  Let's use the probability cutoff of ideal cutoff "cutoff" #########################################
+test_cutoff_attr <- factor(ifelse(test_pred >= optimalcutoff, "Yes", "No"))
+conf_final <- confusionMatrix(test_cutoff_attr, test_actual_attr, positive = "Yes")
+conf_final
+acc <- conf_final$overall[1]
+
+sens <- conf_final$byClass[1]
+
+spec <- conf_final$byClass[2]
+
+acc
+
+sens
+
+spec
+
+##################################
+##Values of final model with 
+# > optimalcutoff
+# [1] 0.169596
+# > acc
+# Accuracy 
+# 0.7248062 
+# > sens
+# Sensitivity 
+# 0.7272727 
+# > spec
+# Specificity 
+# 0.7243293 
+##################################
+
+
+##################################################################################################
+### KS -statistic - Test Data ######
+
+plot(Churn_decile$bucket,Churn_decile$ksStats)
+ksStats = ks(test$Attrition,test$prob)$ksTable
+ksStats %>%
+  ggplot(aes(dec,split))+geom_line(color="red",show.legend = T)+
+  labs(x="Decile",y="KsStatistics")+
+  geom_text(aes(label=split),hjust=0, vjust=0)
+
+max(ksStats$split)###42% is tha max ks achieved in 3rd decile which is good
+
+
+##################################################################################################
+##Gain and Lift calculation
+lift <- function(labels , predicted_prob,groups=10) {
+  
+  if(is.factor(labels)) labels  <- as.integer(as.character(labels ))
+  if(is.factor(predicted_prob)) predicted_prob <- as.integer(as.character(predicted_prob))
+  helper = data.frame(cbind(labels , predicted_prob))
+  helper[,"bucket"] = ntile(-helper[,"predicted_prob"], groups)
+  gaintable = helper %>% group_by(bucket)  %>%
+    summarise_at(vars(labels ), funs(total = n(),
+                                     Attr=sum(., na.rm = TRUE))) %>%
+    mutate(CumAttr = cumsum(Attr),
+           Gain=CumAttr/sum(Attr)*100,
+           Cumlift=Gain/(bucket*(100/groups))) 
+    
+  return(gaintable)
+}
+
+gainLiftData = lift(test$Attrition, test$prob, groups = 10)
+
+
+
+
+
