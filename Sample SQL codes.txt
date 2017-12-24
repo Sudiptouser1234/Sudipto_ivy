@@ -1,0 +1,197 @@
+#Retrieve First name and last name of ALL employees
+
+select fname as "First Name", lname as "Last Name" 
+from employee;
+
+
+
+
+-- 1. Retrieve details of all male employees who draw a salary which is at least 30000
+
+select *
+from employee
+where sex = 'M' and salary >= 30000;
+
+
+-- 2. Retrieve the details of all dependents of essn 333445555
+
+
+select *
+from dependent
+where essn = '333445555';
+
+
+
+-- 3. Retrieve details of projects that are based out Houston or Stafford
+
+
+
+select * from project
+where plocation='Houston' or plocation='Stafford';
+
+
+
+-- 4. Retrieve details of projects that are based out Houston or belongs
+ to deptartment 4
+
+
+select *
+from project where plocation='Houston' or plocation='Strafford'
+and dnum='4';
+
+-- 5. Display the name of the department and the year in which the manager
+ was appointed \
+
+
+select dname, year(mgr_start_date)
+from department;
+
+
+
+select dname, month(mgr_start_date)
+from department;
+
+
+
+-- 6. Display the SSN of all employees who live in Houston
+
+select ssn
+from employee where address='%Houston';
+
+************************************************************
+select essn, hours
+from works_on
+where hours >= 25 and hours <= 30;
+
+
+
+select essn, hours
+from works_on
+where hours between 25 and 30;
+
+-- 7. Display the ssn of employees sorted by their salary in ascending mode
+
+
+select ssn, salary, dno
+from employee
+
+where dno=4
+order by salary asc;
+
+-- 8. Sort the works_on table based on Pno and Hours
+
+
+select * from works_on
+order by Pno,hours;
+
+
+
+-- 9. Display the average project hours 
+
+
+select avg(hours) as 'Average Hours'
+from works_on;
+
+
+select sum(hours) as 'Sum_Hours'
+from works_on;
+
+
+select max(hours) as 'Mean_hours'
+from works_on;
+
+--10. Display the number of employees who do not have a manager
+
+
+
+select count(*)
+from employee
+
+where super_ssn IS NULL;
+
+--11. Display the number of employees in each department
+
+select dno, count(*) as 'Number of employees'
+from employee
+group by dno
+order by dno;
+
+--12. Display the number of male employees in each department
+
+select count(*) as 'No_male_emp'
+from employee
+where sex='M'
+group by dno;
+
+--13.Display the average, minimum, maximum hours spent in each project
+
+select pno, avg(Hours), min(hours), max(hours)
+
+from works_on
+group by pno
+
+order by hours asc;
+
+--14.Display the Dno of those departments that has at least 3 employees
+
+select dno, count(*)
+from employee
+group by dno
+having count(*) >= 3;
+
+--15.Display the fname of employees working in the Research department
+
+select fname
+from employee
+
+where dno = (select Dnumber from department where dname = 'Research')
+order by fname;
+
+--16.Display the fname and salary of employees whose salary is more than the average salary of all the employees
+
+select fname, salary
+from employee
+
+where salary >= (select avg(salary) from employee);
+
+--17.What is the average salary of those employees who have at least one
+ dependent
+
+select * 
+from employee inner join department on employee.dno = department.dnumber;
+
+
+
+select *
+from employee e inner join department d on e.dno = d.dnumber;
+
+
+--18.Display the ssn, lname and the name of the department of all the employees
+
+select ssn, lname, dname 
+from employee
+inner join department on dno=dnumber 
+order by ssn;
+
+--19.Display the ssn, lname, name of project of all the employees
+
+select e.ssn, e.lname, p.pname
+
+from employee e inner join works_on w on e.ssn = w.essn 
+	
+   inner join project p on w.pno = p.pnumber;
+
+--20.Display the ssn, their department, the project they work on and the name of the department which runs that project
+
+select e.fname, ed.dname 'employee-department', p.pname, pd.dname
+
+from employee e inner join department ed on e.dno=ed.dnumber
+    
+  inner join works_on w on w.essn = e.ssn
+    
+  inner join project p on w.pno = p.pnumber
+	
+  inner join department pd on p.dnum = pd.dnumber ;
+
+
+
