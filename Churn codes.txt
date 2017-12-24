@@ -1,0 +1,344 @@
+#The problem - Churn Prediction
+#BoG wants you to identify customers likely to churn balances in the next quarter by atleast 50% vis-a-vis current quarter. You have the customers information such as age, gender, demographics along with their assets, liabilities and transactions with the bank. 
+#Your task as a data scientist would be to predict the propensity to churn for each customer.
+
+#Evaluation Metric
+#The evaluation metric for this competition is the percentage of respoders (customer will churn) captured in the the first and second deciles from all the responders. 
+
+
+
+
+Approach:
+Following are the approaches used:
+
+#I have used simple ML model for this hack.I wasn't able to use entire data set for model building due to memory issue.
+#The model used is XGBoost using R.Have tried the same using Python LightGBM model,but I got better LB score for XGB.Hence,I've selected XGB for final model building.
+
+#I've used sampling method to build the model into 2 parts as follows:
+1.First,I've taken 1lacs sample train data,and built model1.
+2.Then,have taken another sample 2lacs train data,and built model2.
+3.Finally,have ensembled these two models by using simple avarage method.Surprisingly,weighted avarage methos for ensembling models didn't yield better score.
+
+#TRAIN=100000,ROUND=2500;pred1
+
+#TRAIN SAMPLE =2L,ROUND=2500;pred2
+
+#Ensemble pred1,pred2
+
+*************************************************************************************************************************8
+#Loading libraries
+library(dplyr)
+library(ggplot2)
+library(caTools)
+library(car)
+library(GGally)
+library(xgboost)
+library(caret)
+library(Matrix)
+library(MLmetrics)
+
+#Model building part s1,taking 1Lacs sample train data
+#Loading files
+
+
+train<-fread("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Churn prediction/train.csv",nrows=100000)
+test<-fread("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Churn prediction/test.csv")
+
+EDA:
+
+
+sum(duplicated(train$Responders))
+[1] 49998
+
+sum(duplicated(train$NO_OF_Accs))
+
+[1] 49990
+
+sum(duplicated(train$vintage))
+[1] 44042
+
+sum(duplicated(train$HNW_CATEGORY))
+[1] 49997
+
+sum(duplicated(test$NO_OF_Accs))
+
+[1] 193283
+
+sum(duplicated(test$HNW_CATEGORY))
+[1] 199997
+
+
+
+test$Responders<-0
+train$UCIC_ID <- NULL
+test$UCIC_ID <- NULL
+data<-rbind(train,test)
+
+#Missing value treatment
+#Dropping variables with maximum missing values
+
+data$BRN_CW_Amt_prev1<-NULL
+data$BRN_CW_Cnt_prev1<-NULL
+data$BRN_CW_Amt_prev2<-NULL
+data$BRN_CW_Cnt_prev2<-NULL
+data$BRN_CW_Amt_prev3<-NULL
+data$BRN_CW_Cnt_prev3<-NULL
+data$BRN_CW_Amt_prev4<-NULL
+data$BRN_CW_Cnt_prev4<-NULL
+data$BRN_CW_Amt_prev5<-NULL
+data$BRN_CW_Cnt_prev5<-NULL
+data$BRN_CW_Amt_prev6<-NULL
+data$BRN_CW_Cnt_prev6<-NULL
+data$FRX_PrevQ1<-NULL
+data$AGRI_PREM_CLOSED_PREVQ1<-NULL
+data$AL_CNC_PREM_CLOSED_PREVQ1<-NULL
+data$AL_PREM_CLOSED_PREVQ1<-NULL
+
+data$BL_PREM_CLOSED_PREVQ1<-NULL
+data$CC_PREM_CLOSED_PREVQ1<-NULL
+data$AL_PREM_CLOSED_PREVQ1<-NULL
+data$CE_PREM_CLOSED_PREVQ1<-NULL
+data$CV_PREM_CLOSED_PREVQ1<-NULL
+data$EDU_PREM_CLOSED_PREVQ1<-NULL
+data$OTHER_LOANS_PREM_CLOSED_PREVQ1<-NULL
+data$PL_PREM_CLOSED_PREVQ1<-NULL
+data$RD_PREM_CLOSED_PREVQ1<-NULL
+data$FD_PREM_CLOSED_PREVQ1<-NULL
+data$TL_PREM_CLOSED_PREVQ1<-NULL
+data$TWL_PREM_CLOSED_PREVQ1<-NULL
+data$AGRI_Closed_PrevQ1<-NULL
+data$AL_CNC_Closed_PrevQ1<-NULL
+data$AL_Closed_PrevQ1<-NULL
+data$BL_Closed_PrevQ1<-NULL
+
+data$CE_Closed_PrevQ1<-NULL
+data$CV_Closed_PrevQ1<-NULL
+data$EDU_Closed_PrevQ1<-NULL
+data$GL_Closed_PrevQ1<-NULL
+data$BL_Closed_PrevQ1<-NULL
+data$OTHER_LOANS_Closed_PrevQ1<-NULL
+data$PL_Closed_PrevQ1<-NULL
+data$TL_Closed_PrevQ1<-NULL
+data$TWL_Closed_PrevQ1<-NULL
+
+data$CC_CLOSED_PREVQ1<-NULL
+data$TWL_Closed_PrevQ1<-NULL
+data$RD_CLOSED_PREVQ1<-NULL
+data$FD_CLOSED_PREVQ1<-NULL
+data$DEMAT_CLOSED_PREV1YR<-NULL
+data$SEC_ACC_CLOSED_PREV1YR <-NULL
+data$AGRI_DATE <-NULL
+data$AL_CNC_DATE <-NULL
+data$BL_DATE <-NULL
+data$CE_DATE <-NULL
+data$CV_DATE <-NULL
+data$EDU_DATE <-NULL
+data$GL_DATE <-NULL
+data$LAP_DATE <-NULL
+data$LAS_DATE <-NULL
+data$OTHER_LOANS_DATE <-NULL
+data$PL_DATE <-NULL
+data$TL_DATE <-NULL
+data$TWL_DATE <-NULL
+data$NO_OF_COMPLAINTS<-NULL
+data$Req_Logged_PrevQ1<-NULL
+data$Query_Logged_PrevQ1<-NULL
+data$Complaint_Logged_PrevQ1<-NULL
+data$NO_OF_CHEQUE_BOUNCE_V1<-NULL
+data$Percent_Change_in_FT_Bank<-NULL
+data$Percent_Change_in_Self_Txn<-NULL
+
+
+
+#imputing NAs with -9999
+
+data[is.na(data)] <- -9999
+data <- as.data.frame(data)
+
+#Encoding character variables for model buildinng
+
+for(i in 1:ncol(data)){
+  if(class(data[,i])=='character'){
+    data[,i] <- as.numeric(as.factor(data[,i]))
+  }
+}
+
+*******************************************************************************************************
+
+#Further EDA to gain some insights
+
+boxplot(data$C_prev1,xlab=c("prev1"),pars=list(outcol="red"),col="blue")
+
+boxplot(data$ATM_C_prev1,xlab=c("prev1"),pars=list(outcol="red"),col="blue")
+
+
+Responserate= sum(data$Responders)/nrow(data)
+[1] 0.034424
+bar_theme1<- theme(axis.text.x = element_text(angle = 60, hjust = 0.7, vjust = 0.5))
+
+plot_grid(ggplot(data, aes(x=factor(HNW_CATEGORY),fill=factor(Responders)))+ geom_bar()+bar_theme1,align="h") 
+plot_grid(ggplot(data, aes(x=factor(OCCUP_ALL_NEW),fill=factor(Responders)))+ geom_bar()+bar_theme1,align="h") 
+plot_grid(ggplot(data, aes(x=factor(FINAL_WORTH_prev1),fill=factor(Responders)))+ geom_bar()+bar_theme1,align="h") 
+plot_grid(ggplot(data, aes(x=factor(ENGAGEMENT_TAG_prev1 ),fill=factor(Responders)))+ geom_bar()+bar_theme1,align="h") 
+
+************************************************************************************
+#Model building part
+
+train <- data[1:nrow(train),]
+test <- data[-(1:nrow(train)),]
+#defining target var
+target <- train$Responders
+train$Responders <- NULL
+test$Responders <- NULL
+
+
+#Creating sparse matrix for xgb model
+
+trainSparse <- sparse.model.matrix(~.,data=train)
+testSparse <- sparse.model.matrix(~.,data=test)
+varnames <- intersect(colnames(trainSparse),colnames(testSparse))
+trainSparse <- trainSparse[,varnames]
+testSparse <- testSparse[,varnames]
+
+dtrain<-xgb.DMatrix(data=trainSparse,label=target)
+
+dtest<-xgb.DMatrix(data=testSparse)
+
+#CV check
+
+cv<- xgb.cv(data = dtrain, label = target, nfold = 5,
+                 nrounds = 1000, objective = "binary:logistic",maximize=T,print_every_n=100)
+
+
+
+[1]     train-error:0.121505+0.000679   test-error:0.131940+0.002514 
+[101]   train-error:0.045750+0.001377   test-error:0.123960+0.001940 
+[201]   train-error:0.019605+0.001448   test-error:0.125840+0.001977 
+[301]   train-error:0.006660+0.000612   test-error:0.125800+0.001966 
+[401]   train-error:0.001875+0.000354   test-error:0.124860+0.003278 
+[501]   train-error:0.000245+0.000071   test-error:0.125060+0.002675 
+[601]   train-error:0.000015+0.000012   test-error:0.124960+0.002294 
+[701]   train-error:0.000000+0.000000   test-error:0.124820+0.002199 
+[801]   train-error:0.000000+0.000000   test-error:0.124560+0.001886 
+[901]   train-error:0.000000+0.000000   test-error:0.123940+0.002548 
+[1000]  train-error:0.000000+0.000000   test-error:0.123960+0.002549 
+
+
+#Defining parameters
+
+max.depth = 6.0000	
+min_child_weight = 1.0000	
+subsample = 0.9	
+lambda = 0.2	
+alpha = 0.9799	
+gamma = 5.0000	
+colsample = 0.6696
+
+
+#param <- list(booster="gbtree",
+              objective="binary:logistic",
+              eta = 0.01,
+              gamma = 5,
+              max_depth =6,
+              lambda=0.2,
+              alpha=0.9,
+              min_child_weight = 1,
+              subsample = 0.9,
+              colsample_bytree = 0.6,
+              eval_metric="auc"
+)
+
+#Selecting n_round
+n_round<-2500
+
+#model <- xgb.train(params = param,
+                   data = dtrain, 
+                   nround = n_round,
+                   maximize = TRUE,
+                   lambda = lambda,
+                   gamma = gamma,
+                   alpha = alpha,
+                   nthread = 10,
+                   verbose = 1,
+                  
+                   
+)
+
+
+	
+
+n_round <- 2500
+model <- xgb.train(params = list(booster = "gbtree", 
+                                 eta = 0.01,
+                                 max_depth = max.depth,
+                                 min_child_weight = min_child_weight,
+                                 subsample = subsample, 
+                                 colsample_bytree = colsample,
+                                 objective = "binary:logistic",
+                                 eval_metric = "auc"),
+                   data = dtrain, 
+                   nround = n_round,
+                   maximize = TRUE,
+                   lambda = lambda,
+                   gamma = gamma,
+                   alpha = alpha,
+                   nthread = 10,
+                   verbose = 1,
+                  
+                   
+)
+
+#Prediction part1
+
+pred1<-predict(model,dtest)
+
+******************************************************************************************************
+
+#Model building part2
+#Taking sample 2lacs data
+
+train<-fread("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Churn prediction/train.csv",nrows=200000)
+test<-fread("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Churn prediction/test.csv")
+
+#All the steps are same as model building part 1 till building the model.
+#Now,lets predict the model built.
+
+#Prediction part2
+
+pred2<-predict(model,dtest)
+
+#Ensembling the models using simple avarage method
+
+final_pred<-(pred2+pred1)/2
+p<-as.data.frame(final_pred)
+
+#Model submission
+
+p<-format(round(p,4),nsmall=4)
+s<-data.frame(UCIC_ID=test$UCIC_ID,p)
+setnames(s,"final_pred","Responders")
+
+fwrite(s,"C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Churn prediction/Sample28.csv",row.names=F)
+
+
+https://github.com/SudalaiRajkumar/ML/blob/master/AV_ChurnPrediction_Nov2017/buildModel.py
+https://github.com/sadz2201/AV_churn_prediction
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
