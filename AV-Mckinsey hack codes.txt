@@ -1,0 +1,220 @@
+#Problem Statement
+#Mission
+#You are working with the government to transform your city into a smart city. The vision is to convert it into a digital and intelligent city to improve the efficiency of services for the citizens. One of the problems faced by the government is traffic. You are a data scientist working to manage the traffic of the city better and to provide input on infrastructure planning for the future.
+ 
+#The government wants to implement a robust traffic system for the city by being prepared for traffic peaks. They want to understand the traffic patterns of the four junctions of the city. Traffic patterns on holidays, as well as on various other occasions during the year, differ from normal working days. This is important to take into account for your forecasting. 
+ 
+#Your task is to predict traffic patterns in each of these four junctions for the next 4 months.
+ 
+
+
+
+
+#Language used:Python 3.6,Feature engineering,NA treatments
+#Models used:GBM,Lightgbm
+#Parameter tuning
+#Weighted avarabge of 2 models;final submission
+
+
+#importing python packages
+
+import numpy as np
+import pandas as pd
+import lightgbm as lgb
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
+
+
+#Loading the data sets
+
+train=pd.read_csv("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Mckinsey hack/train.csv")
+test=pd.read_csv("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Mckinsey hack/test.csv")
+
+#Setting datetime variable
+
+train['DateTime']=pd.to_datetime(train['DateTime'])
+
+test['DateTime']=pd.to_datetime(test['DateTime'])
+
+
+#Feature Engineering
+
+#Creating new variable "weekday","hour" from date time
+
+train['weekday'] = train['DateTime'].dt.weekday
+train['hour'] = train['DateTime'].dt.hour
+
+
+test['weekday'] = test['DateTime'].dt.weekday
+test['hour'] = test['DateTime'].dt.hour
+
+
+# Checking for missing values per column
+train.isnull().sum(axis=0)/train.shape[0]
+DateTime    0.0
+Junction    0.0
+Vehicles    0.0
+ID          0.0
+weekday     0.0
+hour        0.0
+dtype: float64
+
+test.isnull().sum(axis=0)/test.shape[0]
+
+DateTime    0.0
+Junction    0.0
+Vehicles    0.0
+ID          0.0
+weekday     0.0
+hour        0.0
+dtype: float64
+
+
+
+
+cols=['DateTime']
+
+for x in cols:
+    train[x] = train[x].astype('object')
+    test[x] = test[x].astype('object')
+
+#Label encoding 
+for col in cols:
+    lbl = LabelEncoder()
+    lbl.fit(list(train[col].values) + list(test[col].values))
+    train[col] = lbl.transform(list(train[col].values))
+    test[col] = lbl.transform(list(test[col].values))
+
+train.head()
+test.head()
+
+
+cols_to_use = list(set(train.columns) - set(['ID','Vehicles']))
+
+
+
+
+#Splitting data for train,test set
+X_train, X_test, y_train, y_test = train_test_split(train[cols_to_use], train['Vehicles'], test_size = 0.50)
+
+
+
+#Building GBM model
+
+
+from sklearn.ensemble import GradientBoostingRegressor
+
+gbm=GradientBoostingRegressor(n_estimators=2000,learning_rate=0.01, min_samples_split=2000,min_samples_leaf=30,max_depth=6,subsample=0.8,random_state=10)
+
+gbm=GradientBoostingRegressor(n_estimators=500,learning_rate=0.01, min_samples_split=500,min_samples_leaf=10,max_depth=6,subsample=0.8,random_state=10)
+
+
+gbm.fit(X_train, y_train)
+
+#prediction part
+gbm_pred = gbm.predict(test[cols_to_use])
+#submission
+
+sub = pd.DataFrame({'ID':test['ID'], 'Vehicles':gbm_pred})
+
+sub.to_csv("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Mckinsey hack/Sample88.csv",index=False,float_format="%.0f")
+
+*******************************************************************************************************************
+#Lightgbm model building
+
+dtrain = lgb.Dataset(X_train, y_train)
+dval = lgb.Dataset(X_test, y_test)
+
+#Setting parameters
+
+
+params = {
+    
+    'num_leaves' : 255,
+    'learning_rate':0.01,
+    'metric':'rmse',
+    'objective':'regression',
+    'early_stopping_round': 30,
+    'max_depth':6,
+    'bagging_fraction':0.9,
+    'feature_fraction':0.9,
+     
+    'bagging_seed':2017,
+    'feature_fraction_seed':2017,
+    'verbose' : 1
+    
+}
+
+
+params = {
+    
+    'num_leaves' : 255,
+    'learning_rate':0.01,
+    'metric':'auc',
+    'objective':'binary',
+    'early_stopping_round': 30,
+    'max_depth':6,
+    'bagging_fraction':0.9,
+    'feature_fraction':0.9,
+     
+    'bagging_seed':2017,
+    'feature_fraction_seed':2017,
+    'verbose' : 1
+    
+}
+
+params = {
+    
+    'num_leaves' : 550,
+    'learning_rate':0.02,
+    'metric':'rmse',
+    'objective':'regression',
+    'early_stopping_round': 30,
+    'max_depth':8,
+    'bagging_fraction':0.9,
+    'feature_fraction':0.9,
+     
+    'bagging_seed':2017,
+    'feature_fraction_seed':2017,
+    'verbose' : 1
+    
+}
+
+
+#training lightgbm model
+
+model = lgb.train(params, dtrain,num_boost_round=2000,valid_sets=dval,verbose_eval=50)     
+
+#prediction part
+pred=clf.predict(test[cols_to_use])
+#Submission
+
+sub = pd.DataFrame({'ID':test['ID'], 'Vehicles':pred})
+sub.to_csv("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Mckinsey hack/Sample40.csv",index=False,float_format="%.0f")
+
+************************************************************************************************************************
+
+#Model ensembling part
+#Taking weighted avarage of gbm,lightgbm models
+
+m2 = pd.read_csv("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Mckinsey hack/Sample40.csv")#lgb
+m1 = pd.read_csv("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Mckinsey hack/Sample88.csv")#gbm
+m1["Vehicles"] = (0.7*m1["Vehicles"] + 0.3*m2["Vehicles"])
+
+#Final submission
+
+m1=pd.read_csv("C:/Users/Sudipto Kumar/Desktop/AV DATA HACK/Mckinsey hack/Sample89.csv",index=False,float_format="%.0f")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
