@@ -1,0 +1,153 @@
+#Problem statement:Porto Seguro, one of Brazil’s largest auto and homeowner insurance companies, completely agrees. Inaccuracies in car insurance company’s claim predictions raise the cost of insurance for good drivers and reduce the price for bad ones.
+
+#In this competition, you’re challenged to build a model that predicts the probability that a driver will initiate an auto insurance claim in the next year. 
+#Evaluation metric used:Normalized Gini Coefficient
+
+***************************************************************************************
+
+
+library(MLmetrics)
+library(caret)
+library(xgboost)
+library(Matrix)
+
+#Loading the data sets
+train<-fread("C:/Users/Sudipto Kumar/Desktop/HackerEarth/Safe Driver/train.csv")
+test<-fread("C:/Users/Sudipto Kumar/Desktop/HackerEarth/Safe Driver/test.csv")
+
+
+
+
+#Defining the Gini function
+xgb_normalizedgini <- function(preds, dtrain){
+  actual <- getinfo(dtrain, "label")
+  score <- NormalizedGini(preds,actual)
+  return(list(metric = "NormalizedGini", value = score))
+}
+
+
+
+
+#Combining train,test data
+test$target <- NA
+data <- rbind(train, test)
+rm(train,test)
+gc()
+
+#Feature enginerring,creating new features from categorical and binary variables
+data[, amount_nas := rowSums(data == -1, na.rm = T)]
+data[, high_nas := ifelse(amount_nas>4,1,0)]
+data[, ps_car_13_ps_reg_03 := ps_car_13*ps_reg_03]
+data[, ps_reg_mult := ps_reg_01*ps_reg_02*ps_reg_03]
+data[, ps_ind_bin_sum := ps_ind_06_bin+ps_ind_07_bin+ps_ind_08_bin+ps_ind_09_bin+ps_ind_10_bin+ps_ind_11_bin+ps_ind_12_bin+ps_ind_13_bin+ps_ind_16_bin+ps_ind_17_bin+ps_ind_18_bin]
+
+
+#ps_ind_03 variable is likely to appear in a lot of meaningful interactions
+
+
+#Building XGboost model
+
+cvFolds <- createFolds(data$target[!is.na(data$target)], k=5, list=TRUE, returnTrain=FALSE)
+
+varnames <- setdiff(colnames(data), c("id", "target"))
+
+train_sparse <- Matrix(as.matrix(data[!is.na(target), varnames, with=F]), sparse=TRUE)
+test_sparse <- Matrix(as.matrix(data[is.na(target), varnames, with=F]), sparse=TRUE)
+y_train <- data[!is.na(target),target]
+test_ids <- data[is.na(target),id]
+dtrain <- xgb.DMatrix(data=train_sparse, label=y_train)
+dtest <- xgb.DMatrix(data=test_sparse)
+
+
+
+
+#Parameter tuning
+param <- list(booster="gbtree",
+              objective="binary:logistic",
+              eta = 0.02,
+              gamma = 1,
+              max_depth =6,
+              min_child_weight = 1,
+              subsample = 0.9,
+              colsample_bytree = 0.6
+)
+
+
+
+
+#CV check
+
+xgb_cv <- xgb.cv(data = dtrain,
+                  params = param,
+                  nrounds = 1000,
+                 feval = xgb_normalizedgini,
+                  maximize = TRUE,
+                  prediction = TRUE,
+                  folds = cvFolds,
+                  print_every_n = 25,
+                  early_stopping_round = 30)
+
+
+
+
+
+
+
+cv.res <- xgb.cv(data =dtrain, label = data$target, nfold = 5, nrounds = 100, objective = "binary:logistic",print_every_n = 25)
+
+
+
+
+# best_iter <- xgb_cv$best_iteration
+best_iter <- 540
+
+
+xgb_model <- xgb.train(data = dtrain,
+                       params = param,
+                       nrounds = 540,
+                       feval = xgb_normalizedgini,
+                       maximize = TRUE,
+                       watchlist = list(train = dtrain),
+                       verbose = 1,
+                       print_every_n = 50
+)
+
+
+#Prediction part
+
+preds<-predict(xgb_model,dtest)
+p<-as.data.frame(preds)
+
+#Submission
+
+p<-format(round(p,4),nsmall=4)
+s<-data.frame(id=test_ids,p)
+setnames(s,"preds","target")
+
+fwrite(s,"C:/Users/Sudipto Kumar/Desktop/HackerEarth/Safe Driver/Submission.csv",row.names=F)
+
+
+
+
+
+
+
+
+
+        
+
+
+
+
+
+
+
+
+
+
+
+
+       
+
+
+        
