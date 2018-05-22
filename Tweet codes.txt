@@ -1,0 +1,122 @@
+import pandas as pd
+import numpy as np
+import re
+import datetime
+from nltk.corpus import stopwords
+from sklearn.preprocessing import LabelEncoder
+from nltk.stem.snowball import SnowballStemmer
+from sklearn.feature_extraction.text import CountVectorizer
+import lightgbm as lgb
+from nltk.stem import PorterStemmer
+from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+
+#Downloading files
+train=pd.read_csv("C:/Users/Sudipto Kumar/Desktop/HackerEarth/AV Twitter sentiment analysis/train.csv")
+test=pd.read_csv("C:/Users/Sudipto Kumar/Desktop/HackerEarth/AV Twitter sentiment analysis/test.csv")
+sub=pd.read_csv("C:/Users/Sudipto Kumar/Desktop/HackerEarth/AV Twitter sentiment analysis/sample_submission.csv")
+
+
+
+tweetclean=pd.Series(train['email_body'].tolist() + test['email_body'].tolist()).astype(str)
+
+def desc_clean(word):
+    p1 = re.sub(pattern='(\W+)|(\d+)|(\s+)',repl=' ',string=word)
+    p1 = p1.lower()
+    return p1
+
+tweetclean = tweetclean.map(desc_clean)
+
+stop = set(stopwords.words('english'))
+tweetclean = [[x for x in x.split() if x not in stop] for x in tweetclean]
+
+stemmer = SnowballStemmer(language='english')
+tweetclean = [[stemmer.stem(x) for x in x] for x in tweetclean]
+
+tweetclean=[[x for x in x if len(x)>2] for x in tweetclean]
+tweetclean=[' '.join(x) for x in tweetclean]
+#Creating Count Features
+
+# Due to memory error, limited the number of features to 650
+cv = CountVectorizer(max_features=650)
+tweetclean = cv.fit_transform(tweetclean).todense()
+
+******************************************************************************
+
+
+
+combine = pd.DataFrame(tweetclean)
+combine.rename(columns= lambda x: 'variable_'+ str(x), inplace=True)
+
+#split the text features
+
+train_text = combine[:train.shape[0]]
+test_text = combine[train.shape[0]:]
+
+test_text.reset_index(drop=True,inplace=True)
+
+*******************************************************************************
+cols_to_use=['id']
+target = train['label']
+train = train.loc[:,cols_to_use]
+test = test.loc[:,cols_to_use]
+
+X_train = pd.concat([train, train_text],axis=1)
+X_test = pd.concat([test, test_text],axis=1)
+#X_test=pd.concat([test,test_text],axis=1)
+**************************************************************************
+params = {
+    
+    'num_leaves' : 255,
+    'learning_rate':0.01,
+    'metric':'auc',
+    'objective':'binary',
+    'early_stopping_round': 30,
+    'max_depth':6,
+    'bagging_fraction':0.9,
+    'feature_fraction':0.9,
+     
+    'bagging_seed':2017,
+    'feature_fraction_seed':2017,
+    'verbose' : 1
+    
+}
+
+dtrain=lgb.Dataset(X_train,label=target)
+model = lgb.train(params, dtrain,num_boost_round=2500,verbose_eval=50)
+
+pred1=model1.predict(X_test)
+
+model2 = lgb.train(params, dtrain,num_boost_round=5000,verbose_eval=50)
+
+pred2=model2.predict(X_test)
+
+pred=(pred1*0.7+pred2*0.3)
+
+p=np.around(pred,decimals=1,out=None)
+sub=pd.DataFrame()
+sub['ex']=p
+sub
+
+**********************************************************************************************
+
+
+
+def to_labels(x):
+    if x > 0.40:               
+        return "1"
+    return "0"
+sub=pd.DataFrame()
+sub['id']=test['id']
+sub['label']=p
+sub['label'] = sub['label'].map(lambda x: to_labels(x))
+sub
+sub.to_csv("C:/Users/Sudipto Kumar/Desktop/HackerEarth/AV Twitter sentiment analysis/Sample12.csv",index=False)
+
+#Best score:countvec features=10000,nround=15000
+
+************************************************************************************
+
+
+
+
+
