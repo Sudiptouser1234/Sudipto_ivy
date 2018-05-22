@@ -1,0 +1,207 @@
+data=pd.read_csv("C:/Users/Sudipto Kumar/Desktop/Kaggle/MNIST/train.csv")
+test=pd.read_csv("C:/Users/Sudipto Kumar/Desktop/Kaggle/MNIST/test.csv")
+
+Kerascode:
+
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+
+from keras.models import Sequential
+from keras.layers import Dense, Dropout, Flatten, Activation
+from keras.constraints import maxnorm
+
+from keras.optimizers import Adam
+
+from keras.layers.advanced_activations import PReLU
+from keras.layers.convolutional import Conv2D, MaxPooling2D
+
+from keras.regularizers import l2
+from keras.initializers import RandomNormal
+
+from keras.layers.normalization import BatchNormalization
+from keras.preprocessing.image import ImageDataGenerator
+
+from keras.utils import np_utils
+from keras import backend as K
+K.set_image_dim_ordering('th')
+
+]
+seed = 1070
+np.random.seed(seed)
+Using TensorFlow backend.
+
+file="../input/train.csv"
+df = pd.read_csv(file)
+data = df.as_matrix()
+df = None
+np.random.shuffle(data)
+
+InputPixels = data[:,1:].reshape(data.shape[0], 1, 28, 28).astype('float32')
+Desired = np_utils.to_categorical(data[:,0], 10)
+
+num_classes = Desired.shape[1]
+
+meio = 255/2
+InputPixels = (InputPixels-meio)/meio
+
+VALID_SIZE = round(InputPixels.shape[0]*0.15)
+
+
+x_train = InputPixels[VALID_SIZE:]
+x_valid = InputPixels[:VALID_SIZE]
+
+d_train = Desired[VALID_SIZE:]
+d_valid = Desired[:VALID_SIZE]
+
+InputPixels = None
+Desired = None
+
+x_train.shape
+Out[4]:
+(35700, 1, 28, 28)
+
+model = Sequential()
+model.add(Conv2D(16, (5, 5), input_shape=(1, 28, 28), padding='valid', kernel_regularizer=l2(0.01), kernel_initializer=RandomNormal(mean=0.0,stddev=0.0001, seed=seed), bias_initializer=RandomNormal(mean=0.0,stddev=0.0001, seed=seed)))
+model.add(PReLU(alpha_initializer=RandomNormal(mean=0.0,stddev=0.001, seed=seed)))
+model.add(MaxPooling2D(2, 2))
+model.add(BatchNormalization())
+
+model.add(Conv2D(32, (5, 5), padding='valid', kernel_regularizer=l2(0.01), kernel_initializer=RandomNormal(mean=0.0,stddev=0.001, seed=seed), bias_initializer=RandomNormal(mean=0.0,stddev=0.0001, seed=seed)))
+model.add(PReLU(alpha_initializer=RandomNormal(mean=0.0,stddev=0.0001, seed=seed)))
+model.add(MaxPooling2D(2, 2))
+model.add(BatchNormalization())
+
+
+model.add(Flatten())
+model.add(Dropout(0.15))
+
+model.add(Dense(128, kernel_regularizer=l2(0.01), kernel_initializer=RandomNormal(mean=0.0,stddev=0.01, seed=seed), bias_initializer=RandomNormal(mean=0.0,stddev=0.01, seed=seed)))
+
+model.add(PReLU(alpha_initializer=RandomNormal(mean=0.0,stddev=0.001, seed=seed)))
+model.add(BatchNormalization())
+model.add(Dropout(0.25))
+
+model.add(Dense(num_classes, kernel_regularizer=l2(0.01), kernel_initializer=RandomNormal(mean=0.0,stddev=0.01, seed=seed), bias_initializer=RandomNormal(mean=0.0,stddev=0.01, seed=seed)))
+
+model.add(Activation('softmax'))
+
+# Compiling model
+epochs = 7
+lrate = 1e-4
+decay = lrate/epochs
+
+optimizer = Adam(lr=lrate, beta_1=0.9, beta_2=0.999, epsilon=1e-08, decay=decay)
+
+model.compile(loss='categorical_crossentropy', optimizer=optimizer, metrics=['accuracy'])
+print(model.summary())
+_________________________________________________________________
+Layer (type)                 Output Shape              Param #   
+=================================================================
+conv2d_1 (Conv2D)            (None, 16, 24, 24)        416       
+_________________________________________________________________
+p_re_lu_1 (PReLU)            (None, 16, 24, 24)        9216      
+_________________________________________________________________
+max_pooling2d_1 (MaxPooling2 (None, 16, 12, 12)        0         
+_________________________________________________________________
+batch_normalization_1 (Batch (None, 16, 12, 12)        48        
+_________________________________________________________________
+conv2d_2 (Conv2D)            (None, 32, 8, 8)          12832     
+_________________________________________________________________
+p_re_lu_2 (PReLU)            (None, 32, 8, 8)          2048      
+_________________________________________________________________
+max_pooling2d_2 (MaxPooling2 (None, 32, 4, 4)          0         
+_________________________________________________________________
+batch_normalization_2 (Batch (None, 32, 4, 4)          16        
+_________________________________________________________________
+flatten_1 (Flatten)          (None, 512)               0         
+_________________________________________________________________
+dropout_1 (Dropout)          (None, 512)               0         
+_________________________________________________________________
+dense_1 (Dense)              (None, 128)               65664     
+_________________________________________________________________
+p_re_lu_3 (PReLU)            (None, 128)               128       
+_________________________________________________________________
+batch_normalization_3 (Batch (None, 128)               512       
+_________________________________________________________________
+dropout_2 (Dropout)          (None, 128)               0         
+_________________________________________________________________
+dense_2 (Dense)              (None, 10)                1290      
+_________________________________________________________________
+activation_1 (Activation)    (None, 10)                0         
+=================================================================
+Total params: 92,170
+Trainable params: 91,882
+Non-trainable params: 288
+_________________________________________________________________
+
+model_info = model.fit(x_train, d_train, validation_data=(x_valid, d_valid), epochs=epochs, batch_size=25)
+# Final evaluation of the model
+scores = model.evaluate(x_valid, d_valid, verbose=0)
+print("Error: %.2f%%" % ((1-scores[1])*100))
+Train on 35700 samples, validate on 6300 samples
+Epoch 1/7
+35700/35700 [==============================] - 148s - loss: 0.4778 - acc: 0.9511 - val_loss: 0.1547 - val_acc: 0.9825
+Epoch 2/7
+35700/35700 [==============================] - 144s - loss: 0.1385 - acc: 0.9850 - val_loss: 0.1102 - val_acc: 0.9865
+Epoch 3/7
+35700/35700 [==============================] - 140s - loss: 0.1170 - acc: 0.9885 - val_loss: 0.1008 - val_acc: 0.9898
+Epoch 4/7
+35700/35700 [==============================] - 145s - loss: 0.1060 - acc: 0.9898 - val_loss: 0.1042 - val_acc: 0.9887
+Epoch 5/7
+23100/35700 [==================>...........] - ETA: 45s - loss: 0.1014 - acc: 0.9908
+
+def plot_model_history(model_history):
+    fig, axs = plt.subplots(1,2,figsize=(15,5))
+    # summarize history for accuracy
+    axs[0].plot(range(1,len(model_history.history['acc'])+1),model_history.history['acc'])
+    axs[0].plot(range(1,len(model_history.history['val_acc'])+1),model_history.history['val_acc'])
+    axs[0].set_title('Model Accuracy')
+    axs[0].set_ylabel('Accuracy')
+    axs[0].set_xlabel('Epoch')
+    axs[0].set_xticks(np.arange(1,len(model_history.history['acc'])+1),len(model_history.history['acc'])/10)
+    axs[0].legend(['train', 'val'], loc='best')
+    # summarize history for loss
+    axs[1].plot(range(1,len(model_history.history['loss'])+1),model_history.history['loss'])
+    axs[1].plot(range(1,len(model_history.history['val_loss'])+1),model_history.history['val_loss'])
+    axs[1].set_title('Model Loss')
+    axs[1].set_ylabel('Loss')
+    axs[1].set_xlabel('Epoch')
+    axs[1].set_xticks(np.arange(1,len(model_history.history['loss'])+1),len(model_history.history['loss'])/10)
+    axs[1].legend(['train', 'val'], loc='best')
+    plt.show()
+    
+plot_model_history(model_info)
+
+
+file="../input/test.csv"
+df = pd.read_csv(file)
+data = df.as_matrix()
+df = None
+meio = 255/2
+data = (data-meio)/meio
+x_test = np.reshape(data,(-1,1,28,28))
+
+data = None
+
+d_test = model.predict(x_test, batch_size=32, verbose=0)
+
+
+x = 10
+
+plt.imshow(np.reshape(x_test[x],(28,28)))
+plt.show()
+
+d = np.argmax(d_test,axis=1)
+print(d[x])
+
+
+#Submission
+
+ImageId = np.arange(x_test.shape[0])+1
+
+raw_data = {'ImageId': ImageId,
+        'Label': d}
+df = pd.DataFrame(raw_data, columns = ['ImageId', 'Label'])
+
+df.to_csv('C:/Users/Sudipto Kumar/Desktop/Kaggle/MNIST/tf1.csv', index=None,header=True)
