@@ -1,0 +1,580 @@
+###################	PROBLEM STATEMENT	 ################
+##As a manager at a media company and want to start a new product line to boost your revenue. Being a media company, you want to get into either ebooks, movies, 
+###TV shows or similar such product categories in the entertainment industry. 
+###Using 80 million Amazon reviews from 1995 to 2013 across  three options of product categories to choose from - CDs and Vinyl, Movies and Ebooks (Kindle).
+###we have to analyse a recommend a product category
+
+devtools::install_github('apache/spark@v2.2.0',subdir='R/pkg')
+##install.packages("sparkR")
+# Load the spark library
+library(SparkR)
+library(ggplot2)
+
+
+#### Setting AWS credentials
+Sys.setenv("AWS_ACCESS_KEY_ID" = "AKIAI4DWGWWANY637UPQ", 
+           "AWS_SECRET_ACCESS_KEY" = "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", 
+           "AWS_DEFAULT_REGION" = "us-east-1")
+
+# start the spark session
+##Need the following jars in SPARK_HOME/jars
+##sudo wget https://repo.maven.apache.org/maven2/com/amazonaws/aws-android-sdk-core/2.6.9/aws-android-sdk-core-2.6.9.jar  
+##sudo wget https://repo.maven.apache.org/maven2/com/amazonaws/aws-java-sdk-s3/1.9.9/aws-java-sdk-s3-1.9.9.jar  
+##sudo wget https://repo.maven.apache.org/maven2/com/amazonaws/aws-java-sdk/1.9.9/aws-java-sdk-1.9.9.jar  
+
+sc = sparkR.session(master='local',force=TRUE)
+
+# Read the data from S3 to spark data frames.
+S3_BUCKET_NAME = "s3n://sparkassignment"
+Movies_and_TV_df <- read.df(path = paste(S3_BUCKET_NAME , "/reviews_Movies_and_TV_5.json", sep = ""),source = "json")
+Kindle_Store_df <- read.df(path = paste(S3_BUCKET_NAME , "/reviews_Kindle_Store_5.json", sep = ""),source = "json")
+CDs_and_Vinyl_df <- read.df(path = paste(S3_BUCKET_NAME , "/reviews_CDs_and_Vinyl_5.json", sep = ""),source = "json")
+
+
+# Check the structure of the dataframes.
+str(Movies_and_TV_df)
+str(Kindle_Store_df)
+str(CDs_and_Vinyl_df)
+
+# Check no. of rows. - Number of Reviews - Number of Products Sold.
+numOfProductsSoldMovie <- nrow(Movies_and_TV_df)   # 1697533 rows.
+numOfProductsSoldKindle <- nrow(Kindle_Store_df)    # 982619 rows
+numOfProductsSoldCDs <- nrow(CDs_and_Vinyl_df)   # 1097592 rows
+
+# Check number of distinct reviewers in each - MarketSize
+MarketSizeMovie <- head(SparkR::select(Movies_and_TV_df, countDistinct(Movies_and_TV_df$reviewerID))) # 123960
+MarketSizeKindle <- head(SparkR::select(Kindle_Store_df, countDistinct(Kindle_Store_df$reviewerID))) # 68223
+MarketSizeCDs <- head(SparkR::select(CDs_and_Vinyl_df, countDistinct(CDs_and_Vinyl_df$reviewerID))) # 75258
+##Movie market looks to be much better than other medium. Have to confirm.
+
+
+# Create new columns for Movies and TV Data Frame for analysis.
+Movies_and_TV_df <- withColumn(Movies_and_TV_df, "ReviewLength", length(Movies_and_TV_df$reviewText))
+Movies_and_TV_df <- withColumn(Movies_and_TV_df,"helpfulvotes",getItem(Movies_and_TV_df$helpful,0L))
+Movies_and_TV_df <- withColumn(Movies_and_TV_df,"Totalvotes",getItem(Movies_and_TV_df$helpful,1L))
+Movies_and_TV_df <- withColumn(Movies_and_TV_df,"HelpfulnessScore", Movies_and_TV_df$helpfulvotes/Movies_and_TV_df$Totalvotes)
+Movies_and_TV_df <- withColumn(Movies_and_TV_df, "ReviewYear", year(from_unixtime(Movies_and_TV_df$unixReviewTime)))
+
+# Create new columns for Kindle Data Frame for analysis.
+Kindle_Store_df <- withColumn(Kindle_Store_df, "ReviewLength", length(Kindle_Store_df$reviewText))
+Kindle_Store_df <- withColumn(Kindle_Store_df,"helpfulvotes",getItem(Kindle_Store_df$helpful,0L))
+Kindle_Store_df <- withColumn(Kindle_Store_df,"Totalvotes",getItem(Kindle_Store_df$helpful,1L))
+Kindle_Store_df <- withColumn(Kindle_Store_df,"HelpfulnessScore", Kindle_Store_df$helpfulvotes/Kindle_Store_df$Totalvotes)
+Kindle_Store_df <- withColumn(Kindle_Store_df, "ReviewYear", year(from_unixtime(Kindle_Store_df$unixReviewTime)))
+
+# Create new columns for CDs Data Frame for analysis.
+CDs_and_Vinyl_df <- withColumn(CDs_and_Vinyl_df, "ReviewLength", length(CDs_and_Vinyl_df$reviewText))
+CDs_and_Vinyl_df <- withColumn(CDs_and_Vinyl_df,"helpfulvotes",getItem(CDs_and_Vinyl_df$helpful,0L))
+CDs_and_Vinyl_df <- withColumn(CDs_and_Vinyl_df,"Totalvotes",getItem(CDs_and_Vinyl_df$helpful,1L))
+CDs_and_Vinyl_df <- withColumn(CDs_and_Vinyl_df,"HelpfulnessScore", CDs_and_Vinyl_df$helpfulvotes/CDs_and_Vinyl_df$Totalvotes)
+CDs_and_Vinyl_df <- withColumn(CDs_and_Vinyl_df, "ReviewYear", year(from_unixtime(CDs_and_Vinyl_df$unixReviewTime)))
+
+
+#Missing values for Movies_and_TV_df;Need to verify na values for all 3 files
+overall_null <- where(Movies_and_TV_df, isNull(Movies_and_TV_df$overall))
+count(overall_null)
+#[1] 0
+
+#No missing values found for overall variable
+
+review_null <- where(Movies_and_TV_df, isNull(Movies_and_TV_df$reviewText))
+count(review_null)
+#[1] 0
+
+#No missing values found
+
+helpful_null <- where(Movies_and_TV_df, isNull(Movies_and_TV_df$helpful))
+count(helpful_null)
+#[1] 0
+
+#No missing values found
+
+
+#Missing values for Kindle
+overall_null <- where(Kindle_Store_df, isNull(Kindle_Store_df$overall))
+count(overall_null)
+#[1] 0
+
+#No missing values found for overall variable
+
+review_null <- where(Kindle_Store_df, isNull(Kindle_Store_df$reviewText))
+count(review_null)
+#[1] 0
+
+#No missing values found
+
+helpful_null <- where(Kindle_Store_df, isNull(Kindle_Store_df$helpful))
+count(helpful_null)
+#[1] 0
+
+#No missing values found
+
+#Missing values for CDs and Vinyl
+overall_null <- where(CDs_and_Vinyl_df, isNull(CDs_and_Vinyl_df$overall))
+count(overall_null)
+#[1] 0
+
+#No missing values found for overall variable
+
+review_null <- where(CDs_and_Vinyl_df, isNull(CDs_and_Vinyl_df$reviewText))
+count(review_null)
+#[1] 0
+
+#No missing values found
+
+helpful_null <- where(CDs_and_Vinyl_df, isNull(CDs_and_Vinyl_df$helpful))
+count(helpful_null)
+#[1] 0
+
+#No missing values found
+#*******************************************************************************************************************************
+#Correlation analysis for Movies and TV file
+#Need to verify corr values for all 3 files
+
+registerTempTable(Movies_and_TV_df, "newebooktable")
+q1 <- SparkR::sql("SELECT corr(helpfulvotes, totalvotes) FROM newebooktable")
+head(q1)
+corr(as.double(helpfulvotes), as.double(totalvotes))
+#1                                                      0.9867624
+
+#We can find that there is higher positive correlation between these 2 variables
+
+q2 <- sql("SELECT corr(reviewTextLength, totalvotes) FROM newebooktable")
+head(q2)
+corr(as.double(reviewTextLength), as.double(totalvotes))
+#1                                                          0.0939885
+
+#These 2 vars are less correlated
+
+q3 <- sql("SELECT corr(reviewTextLength, helpfulvotes) FROM newebooktable")
+head(q3)
+
+corr(as.double(reviewTextLength), as.double(helpfulvotes))
+#1                                                           0.09494239
+
+#Less correlation found
+
+q4 <- sql("SELECT corr(unixReviewTime, helpfulvotes) FROM newebooktable")
+
+head(q4)
+
+corr(as.double(unixReviewTime), as.double(helpfulvotes))
+#1                                                         -0.1220617
+
+#These 2 variables are negatively correlated
+
+q5 <- sql("SELECT corr(unixReviewTime, totalvotes) FROM newebooktable")
+head(q5)
+
+corr(as.double(unixReviewTime), as.double(totalvotes))
+#1                                                       -0.1347985
+
+#-ve correlation found
+
+
+#Correlation analysis for Kindle file
+
+registerTempTable(Kindle_Store_df, "newebooktable")
+q1 <- SparkR::sql("SELECT corr(helpfulvotes, totalvotes) FROM newebooktable")
+head(q1)
+corr(as.double(helpfulvotes), as.double(totalvotes))
+#1                                                      0.9867624
+
+#We can find that there is higher positive correlation between these 2 variables
+
+q2 <- sql("SELECT corr(reviewTextLength, totalvotes) FROM newebooktable")
+head(q2)
+corr(as.double(reviewTextLength), as.double(totalvotes))
+#1                                                          0.0939885
+
+#These 2 vars are less correlated
+
+q3 <- sql("SELECT corr(reviewTextLength, helpfulvotes) FROM newebooktable")
+head(q3)
+
+corr(as.double(reviewTextLength), as.double(helpfulvotes))
+#1                                                           0.09494239
+
+#Less correlation found
+
+q4 <- sql("SELECT corr(unixReviewTime, helpfulvotes) FROM newebooktable")
+
+head(q4)
+
+corr(as.double(unixReviewTime), as.double(helpfulvotes))
+#1                                                         -0.1220617
+
+#These 2 variables are negatively correlated
+
+q5 <- sql("SELECT corr(unixReviewTime, totalvotes) FROM newebooktable")
+head(q5)
+
+corr(as.double(unixReviewTime), as.double(totalvotes))
+#1                                                       -0.1347985
+
+#-ve correlation found
+
+#Correlation analysis for CDs and Vinyl file
+
+registerTempTable(CDs_and_Vinyl_df, "newebooktable")
+q1 <- SparkR::sql("SELECT corr(helpfulvotes, totalvotes) FROM newebooktable")
+head(q1)
+corr(as.double(helpfulvotes), as.double(totalvotes))
+#1                                                      0.9867624
+
+#We can find that there is higher positive correlation between these 2 variables
+
+q2 <- sql("SELECT corr(reviewTextLength, totalvotes) FROM newebooktable")
+head(q2)
+corr(as.double(reviewTextLength), as.double(totalvotes))
+#1                                                          0.0939885
+
+#These 2 vars are less correlated
+
+q3 <- sql("SELECT corr(reviewTextLength, helpfulvotes) FROM newebooktable")
+head(q3)
+
+corr(as.double(reviewTextLength), as.double(helpfulvotes))
+#1                                                           0.09494239
+
+#Less correlation found
+
+q4 <- sql("SELECT corr(unixReviewTime, helpfulvotes) FROM newebooktable")
+
+head(q4)
+
+corr(as.double(unixReviewTime), as.double(helpfulvotes))
+#1                                                         -0.1220617
+
+#These 2 variables are negatively correlated
+
+q5 <- sql("SELECT corr(unixReviewTime, totalvotes) FROM newebooktable")
+head(q5)
+
+corr(as.double(unixReviewTime), as.double(totalvotes))
+#1                                                       -0.1347985
+
+#-ve correlation found
+
+
+# -----   Subset the required columns only to get the spread/freq,mean of all 3 dataframes --------------------------
+# Describe the data frame. - The count, Mean, StdDev, Min and Max. 
+
+MoviesTemp <- Movies_and_TV_df[, c("Totalvotes","helpfulvotes","HelpfulnessScore","ReviewLength","ReviewYear","overall")]
+MoviesSummary <- collect(describe(MoviesTemp))
+MoviesSummary
+#Summary         Totalvotes       helpfulvotes    HelpfulnessScore       ReviewLength
+#1   count            1697533            1697533             1088752            1697533
+#2    mean  5.301422122574348  3.569048142215792  0.6231739337533152  922.1014254214792
+#3  stddev 20.244452631321785 17.278831305548632 0.36736675255175794 1198.3547492840405
+#4     min                  0                  0                 0.0                  0
+#5     max               6510               6084                 8.0              32766
+#          ReviewYear            overall
+#1            1697533            1697533
+#2 2009.5357350932206  4.110648217148062
+#3 4.1120218467376475 1.1976147523955183
+#4               1997                1.0
+#5               2014                5.0
+
+KindleTemp <- Kindle_Store_df[, c("Totalvotes","helpfulvotes","HelpfulnessScore","ReviewLength","ReviewYear","overall")]
+KindleSummary <- collect(describe(KindleTemp))
+KindleSummary
+# summary         Totalvotes       helpfulvotes   HelpfulnessScore      ReviewLength
+#1   count             982619             982619             452290            982619
+#2    mean 1.3693669672579096 1.1176753146438243 0.8122255129056122 603.9479940851948
+#3  stddev  6.084526558815745  5.545404215557943 0.3247268679380258 731.4159358606616
+#4     min                  0                  0                0.0                 0
+#5     max               2537               2350                1.0             23037
+#          ReviewYear            overall
+#1             982619             982619
+#2 2013.2255848909904  4.347801131466011
+#3 0.8085766734950578 0.9550557821749456
+#4               2000                1.0
+#5               2014                5.0
+
+CDsTemp <- CDs_and_Vinyl_df[, c("Totalvotes","helpfulvotes","HelpfulnessScore","ReviewLength","ReviewYear","overall")]
+CDsSummary <- collect(describe(CDsTemp))
+CDsSummary
+#summary         Totalvotes       helpfulvotes   HelpfulnessScore       ReviewLength
+#1   count            1097592            1097592             801567            1097592
+#2    mean   5.48027409091903  3.885261554384507 0.7073385535900616  992.5908916974613
+#3  stddev 12.808582952135074 10.826545955515327 0.3395351259351922 1052.7060939070334
+#4     min                  0                  0                0.0                  0
+#5     max               2013               1955                3.0              32713
+#         ReviewYear            overall
+#1            1097592            1097592
+#2 2006.7136795822128  4.294394456227815
+#3  4.336326815167422 1.0737318641546296
+#4               1997                1.0
+#5               2014                5.0
+
+
+# ------------Create Bins depending on Review Text Length for all 3 types of products  -----------------
+maxReviewLengthMovie <- collect(select(Movies_and_TV_df, max(Movies_and_TV_df$ReviewLength)))
+maxReviewLengthMovie    # 32766
+maxReviewLengthKindle <- collect(select(Kindle_Store_df, max(Kindle_Store_df$ReviewLength)))
+maxReviewLengthKindle     #  23037
+maxReviewLengthCDs <- collect(select(CDs_and_Vinyl_df, max(CDs_and_Vinyl_df$ReviewLength)))
+maxReviewLengthCDs       # 32713
+
+# ---  Check the quantiles to see where most review length lies.
+quantiles <- approxQuantile(Movies_and_TV_df, "ReviewLength", c(0.1, 0.5,0.6,0.7, 0.8, 0.9, 0.95, 1.0), relativeError = 0.0)
+# [1] 125   [2] 479  [3] 684  [4] 980   [5] 1433   [6] 2286  [7] 3193  [8] 32766
+quantiles <- approxQuantile(Kindle_Store_df, "ReviewLength", c(0.1, 0.5,0.6,0.7, 0.8, 0.9, 0.95, 1.0), relativeError = 0.0)
+#[1] 125  [2] 332 [3] 438 [4] 597 [5] 873 [6] 1447 [7] 2060  [8] 23037
+quantiles <- approxQuantile(CDs_and_Vinyl_df, "ReviewLength", c(0.1, 0.5,0.6,0.7, 0.8, 0.9, 0.95, 1.0), relativeError = 0.0)
+# [1] 159 [2] 667 [3] 859 [4] 1115 [5] 1495 [6] 2205 [7] 2981 [8] 32713
+
+# --- Select bin width of 200 characters and create a new column indicating bin number according to review text length
+bin_width <- 200
+Movies_and_TV_df  <-  withColumn(Movies_and_TV_df, "ReviewLengthBin", (Movies_and_TV_df$ReviewLength/bin_width))
+Movies_and_TV_df$ReviewLengthBin <- cast(Movies_and_TV_df$ReviewLengthBin, "int")
+maxReviewLengthBinMovie <- collect(select(Movies_and_TV_df, max(Movies_and_TV_df$ReviewLengthBin)))
+maxReviewLengthBinMovie  # 163
+
+
+Kindle_Store_df  <-  withColumn(Kindle_Store_df, "ReviewLengthBin", (Kindle_Store_df$ReviewLength/bin_width))
+Kindle_Store_df$ReviewLengthBin <- cast(Kindle_Store_df$ReviewLengthBin, "int")
+maxReviewLengthBinKindle <- collect(select(Kindle_Store_df, max(Kindle_Store_df$ReviewLengthBin)))
+maxReviewLengthBinKindle     # 115
+
+
+CDs_and_Vinyl_df  <-  withColumn(CDs_and_Vinyl_df, "ReviewLengthBin", (CDs_and_Vinyl_df$ReviewLength/bin_width))
+CDs_and_Vinyl_df$ReviewLengthBin <- cast(CDs_and_Vinyl_df$ReviewLengthBin, "int")
+maxReviewLengthBinCDs <- collect(select(CDs_and_Vinyl_df, max(CDs_and_Vinyl_df$ReviewLengthBin)))
+maxReviewLengthBinCDs   # 163
+
+
+# --- Let us mark any review length bin > 5 into bin 5. ( 1000 Characters)
+Movies_and_TV_df$ReviewLengthBin <- ifelse(Movies_and_TV_df$ReviewLengthBin > 5, 5, Movies_and_TV_df$ReviewLengthBin)
+Kindle_Store_df$ReviewLengthBin <- ifelse(Kindle_Store_df$ReviewLengthBin > 5, 5, Kindle_Store_df$ReviewLengthBin)
+CDs_and_Vinyl_df$ReviewLengthBin <- ifelse(CDs_and_Vinyl_df$ReviewLengthBin > 5, 5, CDs_and_Vinyl_df$ReviewLengthBin)
+
+
+# ----------------------Movies Analysis -----------------------------------------------------------------------
+
+# finding average helpfulness score where atleast 10 people have voted.
+createOrReplaceTempView(Movies_and_TV_df,"MoviesAndTV")
+AvgHelpfulnessScoreMovie = sql("select ReviewLengthBin, avg(HelpfulnessScore) as AvgHelpfulness from MoviesAndTV where Totalvotes>= 10 group by ReviewLengthBin")
+head(AvgHelpfulnessScoreMovie) 
+
+#		ReviewLengthBin AvgHelpfulness
+#1               0      0.3356237
+#2               1      0.4608078
+#3               4      0.6417191
+#4               3      0.6023870
+#5               2      0.5458808
+#6               5      0.7366922
+
+## Plot the helpfulness score vs the bin i.e. Review Length
+# Collect the sparkdataframe first so that it can be plotted using ggplot. 
+HelpfulnessMovie <- collect(AvgHelpfulnessScoreMovie)
+ggplot(HelpfulnessMovie, aes(x=ReviewLengthBin, y = AvgHelpfulness)) + geom_line() + xlab("ReviewLength In Bins of 200 chars") + ylab("AvgHelpfulnessScore")
+# we see as the review length increases , the helpfulness increases.
+
+# let us consider reviews beyond length of 500 words only to check for customer satisfaction - i.e. Long reviews with rating 5. 
+Movies_and_TV_df <- withColumn(Movies_and_TV_df, "CustomerSatisfaction", (Movies_and_TV_df$ReviewLength > 500 & Movies_and_TV_df$overall == 5))
+# let us check the number of satisfied customers. 
+CustomerInfoMovie <- (collect(arrange(count(groupBy(Movies_and_TV_df, "CustomerSatisfaction")), "CustomerSatisfaction")))
+CustomerInfoMovie$CustomerSatisfaction <- factor(CustomerInfoMovie$CustomerSatisfaction)
+barplot(CustomerInfoMovie$count,
+        main = "Customer Satisfaction",
+        ylab = "Number of Customers",
+        names.arg = c("Others", "Very Happy"),
+        col = "darkred",
+        horiz = TRUE)
+# number of very happy customers with movie - 371757, other ratings - either less rating or less review length - 1325776		
+
+# Check number of satisfied customers year wise.
+createOrReplaceTempView(Movies_and_TV_df,"MoviesAndTV")
+# check per year.
+ReviewersMarketPerYearMovie <- collect(sql("select ReviewYear, count(*) as CountReviews, count(Distinct(reviewerID)) as MarketSize from MoviesAndTV group By ReviewYear"))
+ggplot(ReviewersMarketPerYearMovie, aes(x = factor(ReviewYear), y = CountReviews)) + geom_bar(stat = "identity")
+# the number of reviews have increased significantly from 2012 onwards. 
+
+# Check market size by year.
+ggplot(ReviewersMarketPerYearMovie, aes(x = factor(ReviewYear), y = MarketSize)) + geom_bar(stat = "identity")
+# Market Size increased with year.
+
+# The below plot shows that MarketSize and Number of reviewers are proportional
+ggplot(ReviewersMarketPerYearMovie, aes(x = factor(ReviewYear), y = CountReviews)) + geom_bar(aes(fill = MarketSize), position = "dodge",stat = "identity")
+
+CustomerInfoMovie <- collect(sql("Select ReviewYear, count(CustomerSatisfaction) as NumCustumerSatisfied, CustomerSatisfaction from MoviesAndTV group by ReviewYear, CustomerSatisfaction"))
+ggplot(CustomerInfoMovie, aes(x = ReviewYear, y = NumCustumerSatisfied, col = factor(CustomerSatisfaction))) + geom_bar(stat = "identity", position = "fill")
+# We see the ratio of very happy customers is on the decline after the initial increase.
+
+
+# ----------------------Kindle Analysis -----------------------------------------------------------------------
+
+# finding average helpfulness score where atleast 10 people have voted.
+createOrReplaceTempView(Kindle_Store_df,"KindleStore")
+AvgHelpfulnessScoreKindle = sql("select ReviewLengthBin, avg(HelpfulnessScore) as AvgHelpfulness from KindleStore where Totalvotes>= 10 group by ReviewLengthBin")
+head(AvgHelpfulnessScoreKindle) 
+
+#			ReviewLengthBin AvgHelpfulness
+#1               0      0.6640073
+#2               1      0.7841340
+#3               4      0.8589879
+#4               3      0.8499539
+#5               2      0.8335028
+#6               5      0.8746382
+
+## Plot the helpfulness score vs the bin i.e. Review Length
+# Collect the sparkdataframe first so that it can be plotted using ggplot. 
+HelpfulnessKindle <- collect(AvgHelpfulnessScoreKindle)
+ggplot(HelpfulnessKindle, aes(x=ReviewLengthBin, y = AvgHelpfulness)) + geom_line() + xlab("ReviewLength In Bins of 500 chars") + ylab("AvgHelpfulnessScore")
+# The helpfulness of the review is increases with Review Length. In general though, most
+# of the kindle reviews seem helpful with a score above 70%
+
+
+# let us consider reviews beyond length of 500 words only to check for customer satisfaction - i.e. Long reviews with rating 5. 
+Kindle_Store_df <- withColumn(Kindle_Store_df, "CustomerSatisfaction", (Kindle_Store_df$ReviewLength > 500 & Kindle_Store_df$overall == 5))
+# let us check the number of satisfied customers. 
+CustomerInfoKindle <- (collect(arrange(count(groupBy(Kindle_Store_df, "CustomerSatisfaction")), "CustomerSatisfaction")))
+CustomerInfoKindle$CustomerSatisfaction <- factor(CustomerInfoKindle$CustomerSatisfaction)
+barplot(CustomerInfoKindle$count,
+        main = "Customer Satisfaction",
+        ylab = "Number of Customers",
+        names.arg = c("Others", "Very Happy"),
+        col = "darkred",
+        horiz = TRUE)
+# Here again number of customers very happy is less - 189697 vs Others - 792922
+
+# Check number of satisfied customers year wise.
+createOrReplaceTempView(Kindle_Store_df,"KindleStore")
+# check per year.
+ReviewersMarketPerYearKindle <- collect(sql("select ReviewYear, count(*) as CountReviews, count(Distinct(reviewerID)) as MarketSize from KindleStore group By ReviewYear"))
+ggplot(ReviewersMarketPerYearKindle, aes(x = factor(ReviewYear), y = CountReviews)) + geom_bar(stat = "identity")
+# the number of reviews have increased significantly from 2013 onwards. 
+# Since kindle is a new product, no reviews present till 2007. 
+
+# Check market size by year.
+ggplot(ReviewersMarketPerYearKindle, aes(x = factor(ReviewYear), y = MarketSize)) + geom_bar(stat = "identity")
+# Market Size increased with year from 2011.
+
+# The below plot shows that MarketSize and Number of reviewers are proportional
+ggplot(ReviewersMarketPerYearKindle, aes(x = factor(ReviewYear), y = CountReviews)) + geom_bar(aes(fill = MarketSize), position = "dodge",stat = "identity")
+
+CustomerInfoKindle <- collect(sql("Select ReviewYear, count(CustomerSatisfaction) as NumCustumerSatisfied, CustomerSatisfaction from KindleStore group by ReviewYear, CustomerSatisfaction"))
+ggplot(CustomerInfoKindle, aes(x = ReviewYear, y = NumCustumerSatisfied, col = factor(CustomerSatisfaction))) + geom_bar(stat = "identity", position = "fill")
+# We see the ratio of very happy customers is on the decline after the initial increase.
+
+
+# ----------------------CDs and Vinyl Analysis -----------------------------------------------------------------------
+
+# finding average helpfulness score where atleast 10 people have voted.
+createOrReplaceTempView(CDs_and_Vinyl_df,"CDsAndVinyl")
+AvgHelpfulnessScoreCDs = sql("select ReviewLengthBin, avg(HelpfulnessScore) as AvgHelpfulness from CDsAndVinyl where Totalvotes>= 10 group by ReviewLengthBin")
+head(AvgHelpfulnessScoreCDs) 
+
+#          ReviewLengthBin AvgHelpfulness
+#1               0      0.3089268
+#2               1      0.4448003
+#3               4      0.7048680
+#4               3      0.6459787
+#5               2      0.5709846
+#6               5      0.7967021
+
+## Plot the helpfulness score vs the bin i.e. Review Length
+# Collect the sparkdataframe first so that it can be plotted using ggplot. 
+HelpfulnessCDs <- collect(AvgHelpfulnessScoreCDs)
+ggplot(HelpfulnessCDs, aes(x=ReviewLengthBin, y = AvgHelpfulness)) + geom_line() + xlab("ReviewLength In Bins of 200 chars") + ylab("AvgHelpfulnessScore")
+# we see as the review length increases , the helpfulness increases.
+
+# let us consider reviews beyond length of 500 words only to check for customer satisfaction - i.e. Long reviews with rating 5. 
+CDs_and_Vinyl_df <- withColumn(CDs_and_Vinyl_df, "CustomerSatisfaction", (CDs_and_Vinyl_df$ReviewLength > 500 & CDs_and_Vinyl_df$overall == 5))
+# As the review length increases, the helpfulness of the review increases.
+# Review helpfulness is at 70% for character length - 800. 
+
+
+# let us check the number of satisfied customers. 
+CustomerInfoCDs <- (collect(arrange(count(groupBy(CDs_and_Vinyl_df, "CustomerSatisfaction")), "CustomerSatisfaction")))
+CustomerInfoCDs$CustomerSatisfaction <- factor(CustomerInfoCDs$CustomerSatisfaction)
+barplot(CustomerInfoCDs$count,
+        main = "Customer Satisfaction",
+        ylab = "Number of Customers",
+        names.arg = c("Others", "Very Happy"),
+        col = "darkred",
+        horiz = TRUE)
+# No. of very happy customers 377247 is as against 720345 others.
+
+# Check number of satisfied customers year wise.
+createOrReplaceTempView(CDs_and_Vinyl_df,"CDsAndVinyl")
+# check per year.
+ReviewersMarketPerYearCDs <- collect(sql("select ReviewYear, count(*) as CountReviews, count(Distinct(reviewerID)) as MarketSize from CDsAndVinyl group By ReviewYear"))
+ggplot(ReviewersMarketPerYearCDs, aes(x = factor(ReviewYear), y = CountReviews)) + geom_bar(stat = "identity")
+# the number of reviews have increased significantly from 2012 onwards after an initial increase and decrease.
+
+# Check market size by year.
+ggplot(ReviewersMarketPerYearCDs, aes(x = factor(ReviewYear), y = MarketSize)) + geom_bar(stat = "identity")
+# Market Size increased again after an initial increase and slight decrease from 2009 onwards.Again, we can find increasing trends from 2012 onwards.
+
+# The below plot shows that MarketSize and Number of reviewers are proportional
+ggplot(ReviewersMarketPerYearCDs, aes(x = factor(ReviewYear), y = CountReviews)) + geom_bar(aes(fill = MarketSize), position = "dodge",stat = "identity")
+
+CustomerInfoCDs <- collect(sql("Select ReviewYear, count(CustomerSatisfaction) as NumCustumerSatisfied, CustomerSatisfaction from CDsAndVinyl group by ReviewYear, CustomerSatisfaction"))
+ggplot(CustomerInfoCDs, aes(x = ReviewYear, y = NumCustumerSatisfied, col = factor(CustomerSatisfaction))) + geom_bar(stat = "identity", position = "fill")
+# We see the ratio of very happy customers is on the decline after the initial increase.
+
+
+##--------------------------- Analsyis of Different product categories ---------------------------------------------------------
+# Create a data frame to compare the different products.
+# Since we are going to plot - no need to create a spark data frame as that will involve recoverting to R data frame to use in ggplot. 
+ProductType = c("Movies", "Kindle", "CDs")
+MarketSize = c(MarketSizeMovie[1,1], MarketSizeKindle[1,1], MarketSizeCDs[1,1])
+ProductsSold = c(numOfProductsSoldMovie, numOfProductsSoldKindle, numOfProductsSoldCDs)
+ProductDF  = data.frame(ProductType, MarketSize, ProductsSold)
+
+
+# Compare market size for each product type.
+ggplot(ProductDF, aes(x = factor(ProductType), y = ProductsSold)) + geom_bar(stat = "identity")
+# number of movies sold is more followed by CDs and then kindle
+
+# Compare the customers satisfied.
+ggplot(ProductDF, aes(x = factor(ProductType), y = MarketSize)) + geom_bar(stat = "identity")
+# market Size of CDs and Movies are comparable where Movies has got maximum market size.
+
+########## Final analysis
+
+
+Movies_and_TV_df_rvwcount = collect(sql("select count(distinct(reviewerID)) as moviecount,ReviewYear from MoviesAndTV group by ReviewYear"))
+Kindle_Store_df_rvwcount = collect(sql("select count(distinct(reviewerID)) as kindlecount,ReviewYear from KindleStore group by ReviewYear"))
+CDs_and_Vinyl_df_rvwcount = collect(sql("select count(distinct(reviewerID)) as cdcount,ReviewYear from CDsAndVinyl group by ReviewYear"))
+mergedrvwcount=merge(Movies_and_TV_df_rvwcount,Kindle_Store_df_rvwcount,by="ReviewYear")
+mergedrvwcount=merge(mergedrvwcount,CDs_and_Vinyl_df_rvwcount,by="ReviewYear")
+ggplot(mergedrvwcount,aes(x=ReviewYear))+
+  geom_point(aes(y=moviecountcount,color="black"))+
+  geom_point(aes(y=kindlecount,color="blue"))+
+  geom_point(aes(y=cdcount,color="pink"))+
+  scale_color_manual(name = "Category",labels = c("movie","kindle", "cd"),values=c("black"="#000000","blue" = "#ff00ff", "pink" = "#3399ff"))
+
+##The current trend over years shows movie has more reviews hence more sales.
+
+par(mfrow = c(2, 2))
+ggplot(CustomerInfoMovie, aes(x = ReviewYear, y = NumCustumerSatisfied, col = factor(CustomerSatisfaction))) + geom_bar(stat = "identity", position = "fill")
+ggplot(CustomerInfoKindle, aes(x = ReviewYear, y = NumCustumerSatisfied, col = factor(CustomerSatisfaction))) + geom_bar(stat = "identity", position = "fill")
+ggplot(CustomerInfoCDs, aes(x = ReviewYear, y = NumCustumerSatisfied, col = factor(CustomerSatisfaction))) + geom_bar(stat = "identity", position = "fill")
+
+##The current trend shows movie has more satisified customers than other media.
+
+# check for product sold and market size after 2010 - the recent years to check the trends after kindle was popular. 
+createOrReplaceTempView(Movies_and_TV_df,"MoviesAndTV")
+ReviewersMarketMovieRecent <- collect(sql("select count(*) as CountReviews, count(Distinct(reviewerID)) as MarketSize from MoviesAndTV where ReviewYear >= 2010"))
+createOrReplaceTempView(Kindle_Store_df,"KindleStore")
+ReviewersMarketKindleRecent <- collect(sql("select count(*) as CountReviews, count(Distinct(reviewerID)) as MarketSize from KindleStore where ReviewYear >= 2010"))
+createOrReplaceTempView(CDs_and_Vinyl_df,"CDsAndVinyl")
+ReviewersMarketCDsRecent <- collect(sql("select count(*) as CountReviews, count(Distinct(reviewerID)) as MarketSize from CDsAndVinyl where ReviewYear >= 2010"))
+RecentMarketsSize = c(ReviewersMarketMovieRecent[1,2],ReviewersMarketKindleRecent[1,2], ReviewersMarketCDsRecent[1,2] )
+RecentProductSold = c(ReviewersMarketMovieRecent[1,1],ReviewersMarketKindleRecent[1,1], ReviewersMarketCDsRecent[1,1] )
+RecentProductDF = data.frame(ProductType, RecentMarketsSize, RecentProductSold)
+ggplot(RecentProductDF, aes(x = factor(ProductType), y = RecentProductSold)) + geom_bar(stat = "identity")
+ggplot(RecentProductDF, aes(x = factor(ProductType), y = RecentMarketsSize)) + geom_bar(stat = "identity")
+
+# Though the above shows the number of products sold is comparable for both Movies and Kindle
+# from 2010 onwards, the Market Size for movies is more followed by Kindle and then CDs.
+
+
+
+#Based on the above analysis,we should invest for product category "Movies" since it has seen steady growth for the market size right from the initial years i.e.2008.
+#The growth/market size for Movie is faster than other 2 products.Hence,we can expect more market size for this product in the coming years.
+##Also customer satisfaction is good.
