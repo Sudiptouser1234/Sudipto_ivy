@@ -1,0 +1,222 @@
+
+--Creating the database
+
+create database cdr_analysis;
+
+use cdr_analysis;
+*********************************************************************************
+--Task 1
+--Importing enitre data to an external table cdr_analysis.cdr
+--The empty cells are treated as NULL in Hive.
+
+
+create external table cdr_analysis.cdr(
+squareid int,
+timeinterval bigint,
+countrycode int,
+smsinactivity double,
+smsoutactivity double,
+callinactivity double,
+calloutactivity double,
+internettrafficactivity double
+)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+LOCATION 's3://cdr-dataset/data/'
+TBLPROPERTIES('serialization.null.format'='');
+
+--Creating a managed (internal) table cdr_analysis.demo
+
+CREATE TABLE IF NOT EXISTS cdr_analysis.demo(
+squareid int,
+timeinterval bigint,
+countrycode int,
+smsinactivity double,
+smsoutactivity double,callinactivity double,
+calloutactivity double,internettrafficactivity double);
+
+
+************************************************************************************************************************
+--Task 2
+--We are analysing telecom data of three countries (country_code = 39, 43, 33)
+--Creating a table from the external table created in task 1, to store the data corresponding only to these three countries
+--Insert data into the managed table cdr_analysis.demo
+
+
+
+INSERT OVERWRITE TABLE cdr_analysis.demo
+SELECT squareid,timeinterval,countrycode,smsinactivity,smsoutactivity,
+
+callinactivity,calloutactivity,internettrafficactivity from cdr_analysis.cdr
+where countrycode=39 or countrycode=43 or countrycode=33;
+
+
+
+
+************************************************************************************************
+--Task 2:query1
+
+select count(squareid) as total from cdr_analysis.demo;
+
+
+--Query 2
+
+select countrycode,min(internettrafficactivity) as min_activity from cdr_analysis.demo 
+
+group by countrycode 
+
+order by min_activity
+
+limit 1;
+
+--Query 3
+
+select countrycode,(sum(smsinactivity)+sum(smsoutactivity)+sum(callinactivity)+ sum(calloutactivity)+sum(internettrafficactivity)) as total_activity  
+from cdr_analysis.demo
+group by countrycode
+order by total_activity Desc
+limit 1;
+
+
+
+--Query 4
+
+
+select squareid, sum(COALESCE(smsinactivity,0)+ COALESCE(smsoutactivity,0)) as max_activity
+
+from cdr_analysis.demo
+
+group by squareid
+
+order by max_activity desc
+
+limit 1;
+
+
+--Query 5
+-- Compress the table that was created in the beginning of task 2
+--Creating ORC table cdr_analysis.cdr_orc
+
+
+
+CREATE EXTERNAL TABLE IF NOT EXISTS cdr_analysis.cdr_orc(
+squareid int,
+countrycode int,
+timeinterval bigint,
+smsinactivity double,
+smsoutactivity double,
+callinactivity double,
+calloutactivity double,
+internettrafficactivity double
+)
+STORED AS ORC tblproperties ("orc.compress"="SNAPPY");
+
+--Populating the orc table
+
+insert overwrite table cdr_analysis.cdr_orc 
+select * from cdr_analysis.demo;
+
+--Query 5
+
+select (sum(smsinactivity)+sum(smsoutactivity)+sum(callinactivity)+sum(calloutactivity)+sum(internettrafficactivity)) as total_activity
+from cdr_analysis.cdr_orc;
+
+
+
+****************************************************************************************************
+--Task 3
+--Analyzing a specific country with country code=39
+--Also,analyzing the activity of three specific grids with square_ids 101, 102 and 103 in this country
+--partitioning the table created at the beginning of task 2
+--Partitioned table name cdr_analysis.cdrpart
+
+
+
+SET hive.exec.dynamic.partition=true;
+SET hive.exec.dynamic.partition.mode=nonstrict;
+set hive.execution.engine=mr;
+CREATE EXTERNAL TABLE cdr_analysis.cdrpart(
+squareid int,
+timeinterval bigint,
+smsinactivity double,
+smsoutactivity double,
+callinactivity double,
+calloutactivity double,
+internettrafficactivity double
+)
+
+PARTITIONED BY (countrycode int)
+ROW FORMAT DELIMITED FIELDS TERMINATED BY '\t'
+LOCATION 's3://cdr-dataset/data/';
+
+
+--Inserting data into the partition table
+
+INSERT OVERWRITE TABLE cdr_analysis.cdrpart PARTITION (countrycode) 
+select squareid,
+timeinterval,
+smsinactivity,
+smsoutactivity,
+callinactivity,
+calloutactivity,
+internettrafficactivity,
+countrycode FROM cdr_analysis.cdr
+where countrycode=39 or squareid=101 or squareid=102 or squareid=103;
+
+
+--Query 1
+
+select (sum(callinactivity)+sum(calloutactivity)) as total_call_activity
+from cdr_analysis.cdrpart;
+
+
+--Query 2
+
+select (sum(smsinactivity)+sum(smsoutactivity)) as total_sms_activity
+from cdr_analysis.cdrpart;
+
+
+--Query 3
+--Executing the query without compressing the partitioned table
+
+select (sum(smsinactivity)+sum(smsoutactivity)+sum(callinactivity)+sum(calloutactivity)+sum(internettrafficactivity)) as total_activity
+from cdr_analysis.cdrpart;
+*******************************************************************************************************************
+
+--Now,compressing the partitioned table
+
+
+CREATE EXTERNAL TABLE IF NOT EXISTS cdr_analysis.cdr_part_orc(
+squareid int,
+timeinterval bigint,
+smsinactivity double,
+smsoutactivity double,
+callinactivity double,
+calloutactivity double,
+internettrafficactivity double
+)
+partitioned by (countrycode int)
+STORED AS ORC tblproperties ("orc.compress"="SNAPPY");
+
+
+--Populating the compressed,partitioned table
+
+
+insert overwrite table cdr_analysis.cdr_part_orc partition(countrycode)
+
+select * from cdr_analysis.cdrpart;
+
+
+--Query 3
+
+select (sum(smsinactivity)+sum(smsoutactivity)+sum(callinactivity)+sum(calloutactivity)+sum(internettrafficactivity)) as total_activity
+from cdr_analysis.cdr_part_orc;
+DDA1710425_main.txt
+
+
+
+
+
+
+
+
+
